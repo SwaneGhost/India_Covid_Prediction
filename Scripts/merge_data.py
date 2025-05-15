@@ -5,8 +5,20 @@ import numpy as np
 
 def merge_data() -> pd.DataFrame:
     """
-    Merges multiple CSV files into a single DataFrame.
-    The function reads two CSV files, one containing socio-economic data and the other containing COVID-19 data.
+    Merges multiple cleaned CSV files into a single DataFrame.
+    The function performs the following steps:
+    1. Check if the merged file already exists:
+       - If it exists, load and return the merged file.
+       - If it does not exist, process the raw data.
+    2. Load and clean the following datasets:
+       - allmetrics_states.csv (COVID-19 metrics)
+       - state_wise_pop.csv (socio-economic data)
+       - HospitalBedsIndia.csv (medicare data)
+       - ICMRTestingLabs.csv (testing labs data)
+    3. Merge the cleaned DataFrames on the 'state' column using an inner join.
+    4. Save the merged DataFrame to the processed folder as a CSV file.
+    5. Return the merged DataFrame.
+
     Returns:
         pd.DataFrame: Merged DataFrame.
     """
@@ -27,16 +39,16 @@ def merge_data() -> pd.DataFrame:
     # Load and clean the medicare data
     medicare_df = load_and_clean_medicare_data() # doesn't have "Dadra and Nagar Haveli and Daman and Diu"
 
+    # Load and clean the ICMRTestingLabs.csv file
+    imcr_df = load_and_clean_testing_labs()
+
     # Define target df
     merged_df = pd.DataFrame()
 
     # Merge the dataframes on the 'state' column
     merged_df = pd.merge(covid_df, socio_df, on='state', how='inner')
     merged_df = pd.merge(merged_df, medicare_df, on='state', how='inner')
-
-    # TODO add lag to target feature and remove the first row in each city 
-    #  - needed for the model to work
-    # TODO consider if 0 tagret values are needed or not
+    merged_df = pd.merge(merged_df, imcr_df, on='state', how='inner')
 
     # Save the merged DataFrame to a CSV file
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -45,13 +57,11 @@ def merge_data() -> pd.DataFrame:
 
     return merged_df
 
-# not done - we keeping state,dates,cum_positive_cases,cum_positivity_rate,daily_positive_cases,cum_recovered,daily_recovered,cum_deceased,daily_deceased,daily_positivity_rate,daily_tests,cum_tests,test_per_million,daily_cases_per_million,daily_tests_per_million,
-
-
+# done 
 def load_and_clean_allmetrics() -> pd.DataFrame:
     """
     Load allmetrics_states.csv, clean the data, save it to the processed folder, and return it.
-    The following steps are performed:
+    The function performs the following steps:
     1. Check if the cleaned file already exists:
        - If it exists, load and return the cleaned file.
        - If it does not exist, process the raw data.
@@ -61,8 +71,12 @@ def load_and_clean_allmetrics() -> pd.DataFrame:
     5. Remove rows where the 'state' column is "India."
     6. Fill any missing values (NaN) with 0.
     7. Filter out rows with dates past 13/8/2021 (including that date).
-    8. Save the cleaned DataFrame to the processed folder as a CSV file.
-    9. Return the cleaned DataFrame.
+    8. Keep only the relevant columns:
+       - 'state', 'dates', 'cum_positive_cases', 'cum_positivity_rate', 'daily_positive_cases',
+         'cum_recovered', 'daily_recovered', 'cum_deceased', 'daily_deceased', 'daily_positivity_rate',
+         'daily_tests', 'cum_tests', 'test_per_million', 'daily_cases_per_million', 'daily_tests_per_million'.
+    9. Save the cleaned DataFrame to the processed folder as a CSV file.
+    10. Return the cleaned DataFrame.
 
     Returns:
         pd.DataFrame: Cleaned DataFrame.
@@ -83,7 +97,7 @@ def load_and_clean_allmetrics() -> pd.DataFrame:
 
     # The df has the date in the format "DD Month" without a year
     # Add a year to the dates
-    def add_year_to_dates(group):
+    def add_year_to_dates(group: pd.DataFrame) -> pd.DataFrame:
         year = 2020
         previous_month = None
         updated_dates = []
@@ -95,6 +109,7 @@ def load_and_clean_allmetrics() -> pd.DataFrame:
             updated_dates.append(f"{day} {month} {year}")
             previous_month = month
 
+        group = group.copy()
         group['dates'] = updated_dates
         return group
 
@@ -114,36 +129,41 @@ def load_and_clean_allmetrics() -> pd.DataFrame:
     cutoff_date = pd.to_datetime('13/8/2021', format='%d/%m/%Y')
     df = df[df['dates'] < cutoff_date]
 
-    # TODO remove any unnecessary columns
-
+    # Keep the columns we want
+    df = df[['state', 'dates', 'cum_positive_cases', 'cum_positivity_rate', 'daily_positive_cases',
+         'cum_recovered', 'daily_recovered', 'cum_deceased', 'daily_deceased', 'daily_positivity_rate',
+         'daily_tests', 'cum_tests', 'test_per_million', 'daily_cases_per_million', 'daily_tests_per_million']]
+    
     # Save the cleaned DataFrame to a CSV file
     df.to_csv(out_path, index=False)
     print(f'Cleaned data saved to {out_path}')
 
     return df
 
-# not done- density - drop majority
+# done
 def load_and_clean_states_data() -> pd.DataFrame:
     """
     Load state_wise_pop.csv, clean the data, save it to the processed folder, and return it.
-    The following steps are performed:
+    The function performs the following steps:
     1. Check if the cleaned file already exists:
        - If it exists, load and return the cleaned file.
        - If it does not exist, process the raw data.
     2. Read the raw CSV file.
     3. Rename columns for consistency and readability:
        - 'States/Uts' to 'state'
-       - 'Population(2024)' to 'population'
+       - 'population(2024)' to 'population'
        - 'Male(literacy rate)' to 'Male literacy rate %'
        - 'Female (literacy rate)Average (literacy rate)' to 'Female literacy rate %'
        - 'average (literacy rate)' to 'Average literacy rate %'
-       - 'sex ratio (number of female per male)' to 'Female to Male ratio'
-    4. Remove unnecessary columns: 'population(1901)', 'population(1951)', 'population(2011)', 'population(2023)'.
+       - 'sex ratio (number of female per male)' to 'Female to Male ratio'.
+       - 'Area (sq. km)' to 'area'.
+    4. Remove unnecessary columns: 'population(1901)', 'population(1951)', 'population(2011)', 'population(2023)', 'Majority'.
     5. Replace '&' with 'and' in the 'state' column for uniformity.
     6. Replace any missing values ('-') with NaN.
     7. Impute missing values in numeric columns using KNNImputer.
-    8. Save the cleaned DataFrame to the processed folder as a CSV file.
-    9. Return the cleaned DataFrame.
+    8. Add a new column 'density' calculated as 'population' divided by 'area'.
+    9. Save the cleaned DataFrame to the processed folder as a CSV file.
+    10. Return the cleaned DataFrame.
 
     Returns:
         pd.DataFrame: Cleaned DataFrame.
@@ -165,15 +185,16 @@ def load_and_clean_states_data() -> pd.DataFrame:
     # Rename Column names
     df.rename(columns={
         'States/Uts': 'state',
-        'Population(2024)': 'population',
+        'population(2024)': 'population',
         'Male(literacy rate)': 'Male literacy rate %',
         'Female (literacy rate)Average (literacy rate)': 'Female literacy rate %',
         'average (literacy rate)': 'Average literacy rate %',
-        'sex ratio (number of female per male)': 'Female to Male ratio'
+        'sex ratio (number of female per male)': 'Female to Male ratio',
+        'Area (sq. km)': 'area'
         }, inplace=True)
 
     # Remove columns population(1901), population(1951), population(2011), population(2023)
-    df.drop(columns=['population(1901)', 'population(1951)', 'population(2011)', 'population(2023)'], inplace=True)
+    df.drop(columns=['population(1901)', 'population(1951)', 'population(2011)', 'population(2023)', 'Majority'], inplace=True)
 
     # Change any state that has '&' to 'and'
     df['state'] = df['state'].str.replace('&', 'and', regex=False)
@@ -186,7 +207,8 @@ def load_and_clean_states_data() -> pd.DataFrame:
     imputer = KNNImputer(n_neighbors=5)
     df[numeric_cols] = imputer.fit_transform(df[numeric_cols])
 
-    # TODO remove any unnecessary columns
+    # Add a new column 'density' to the DataFrame
+    df['density'] = df['population'] / df['area']
 
     # Save the cleaned DataFrame to a CSV file
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
@@ -199,7 +221,7 @@ def load_and_clean_states_data() -> pd.DataFrame:
 def load_and_clean_medicare_data() -> pd.DataFrame:
     """
     Load HospitalBedsIndia.csv, clean the data, save it to the processed folder, and return it.
-    The following steps are performed:
+    The function performs the following steps:
     1. Check if the cleaned file already exists:
        - If it exists, load and return the cleaned file.
        - If it does not exist, process the raw data.
@@ -216,7 +238,7 @@ def load_and_clean_medicare_data() -> pd.DataFrame:
        - 'NumRuralHospitals_NHP18' to 'rural_hospitals'
        - 'NumRuralBeds_NHP18' to 'rural_beds'
        - 'NumUrbanHospitals_NHP18' to 'urban_hospitals'
-       - 'NumUrbanBeds_NHP18' to 'urban_beds'
+       - 'NumUrbanBeds_NHP18' to 'urban_beds'.
     6. Replace '&' with 'and' in the 'state' column for uniformity.
     7. Replace any missing values ('-') with NaN.
     8. Impute missing values in numeric columns using KNNImputer.
@@ -268,6 +290,56 @@ def load_and_clean_medicare_data() -> pd.DataFrame:
     numeric_cols = df.select_dtypes(include=[np.number]).columns
     imputer = KNNImputer(n_neighbors=5)
     df[numeric_cols] = imputer.fit_transform(df[numeric_cols])
+
+    # Save the cleaned DataFrame to a CSV file
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    df.to_csv(out_path, index=False)
+    print(f'Cleaned data saved to {out_path}')
+
+    return df
+
+def load_and_clean_testing_labs() -> pd.DataFrame:
+    """
+    Load ICMRTestingLabs.csv, clean the data, save it to the processed folder, and return it.
+    The function performs the following steps:
+    1. Check if the cleaned file already exists:
+       - If it exists, load and return the cleaned file.
+       - If it does not exist, process the raw data.
+    2. Read the raw CSV file.
+    3. Keep only the 'state' and 'type' columns.
+    4. Group by 'state' and count the existing 'type' values.
+    5. Replace '&' with 'and' in the 'state' column for uniformity.
+    6. Save the cleaned DataFrame to the processed folder as a CSV file.
+    7. Return the cleaned DataFrame.
+
+    Returns:
+        pd.DataFrame: Cleaned DataFrame.
+    """
+    # Path to the processed file
+    out_path = os.path.join("Data", "Processed", "ICMRTestingLabs_cleaned.csv")
+
+    # Check if the cleaned file already exists
+    if os.path.exists(out_path):
+        print(f"Cleaned file already exists at {out_path}. Loading it.")
+        return pd.read_csv(out_path)
+
+    # The path to the CSV file
+    path = os.path.join("Data", "Raw", "Covid-19_India_Reports", "COVID-19_in_India", "ICMRTestingLabs.csv")
+
+    # Read the CSV file
+    df = pd.read_csv(path)
+
+    # Keep only the state column and the type
+    df = df[['state', 'type']]
+
+    # Group by state and count the existing types
+    df = df.groupby('state')['type'].value_counts().unstack(fill_value=0)
+
+    # Reset the index to ensure 'state' is a regular column
+    df = df.reset_index()
+
+    # Replace '&' with 'and' in the 'state' column
+    df['state'] = df['state'].str.replace('&', 'and', regex=False)
 
     # Save the cleaned DataFrame to a CSV file
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
