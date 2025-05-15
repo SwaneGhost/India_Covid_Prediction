@@ -36,8 +36,6 @@ def merge_data() -> pd.DataFrame:
 
     # TODO add lag to target feature and remove the first row in each city 
     #  - needed for the model to work
-    # TODO encode categorical variables
-    # TODO index the dates
     # TODO consider if 0 tagret values are needed or not
 
     # Save the merged DataFrame to a CSV file
@@ -47,7 +45,9 @@ def merge_data() -> pd.DataFrame:
 
     return merged_df
 
-# not done
+# not done - we keeping state,dates,cum_positive_cases,cum_positivity_rate,daily_positive_cases,cum_recovered,daily_recovered,cum_deceased,daily_deceased,daily_positivity_rate,daily_tests,cum_tests,test_per_million,daily_cases_per_million,daily_tests_per_million,
+
+
 def load_and_clean_allmetrics() -> pd.DataFrame:
     """
     Load allmetrics_states.csv, clean the data, save it to the processed folder, and return it.
@@ -122,7 +122,7 @@ def load_and_clean_allmetrics() -> pd.DataFrame:
 
     return df
 
-# not done
+# not done- density - drop majority
 def load_and_clean_states_data() -> pd.DataFrame:
     """
     Load state_wise_pop.csv, clean the data, save it to the processed folder, and return it.
