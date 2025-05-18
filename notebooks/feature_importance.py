@@ -1,6 +1,24 @@
+"""
+Module for analyzing feature importance in the COVID-19 prediction models.
+"""
 
-# Feature importance analysis
-def analyze_feature_importance(model_name, model):
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+def analyze_feature_importance(model_name, model, X_train, X_test, preprocessor, categorical_features, numerical_features):
+    """
+    Analyze and visualize feature importance for the given model.
+    
+    Args:
+        model_name (str): Name of the model.
+        model: Trained model instance (Pipeline).
+        X_train, X_test: Training and testing data.
+        preprocessor: ColumnTransformer for preprocessing the data.
+        categorical_features: List of categorical feature names.
+        numerical_features: List of numerical feature names.
+    """
     print(f"\n--- Feature Importance Analysis for {model_name} ---")
 
     if model_name in ['Random Forest', 'Gradient Boosting']:
@@ -65,7 +83,10 @@ def analyze_feature_importance(model_name, model):
 
                 # Plot coefficients
                 plt.figure(figsize=(12, 8))
-                sns.barplot(x='Coefficient', y='Feature', data=coef_df.head(20))  # Top 20 features
+                top_20 = coef_df.head(20).copy()
+                # Reorder by coefficient value for better visualization
+                top_20 = top_20.sort_values('Coefficient')
+                sns.barplot(x='Coefficient', y='Feature', data=top_20)
                 plt.title(f'Top 20 Feature Coefficients - {model_name}')
                 plt.axvline(x=0, color='r', linestyle='-')
                 plt.tight_layout()
@@ -82,5 +103,50 @@ def analyze_feature_importance(model_name, model):
     else:
         print(f"Feature importance analysis not implemented for {model_name}")
 
-# Plot feature importance for the best model
-analyze_feature_importance(best_model_name, best_model)
+    # Make predictions on test data using the model
+    y_pred = model.predict(X_test)
+
+    # Plot actual vs predicted values
+    plt.figure(figsize=(12, 8))
+    plt.scatter(y_test, y_pred, alpha=0.5)
+    plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--')
+    plt.xlabel('Actual')
+    plt.ylabel('Predicted')
+    plt.title(f'Actual vs Predicted Cumulative Positive Cases - {model_name}')
+    plt.tight_layout()
+    plt.show()
+
+    # Plot residuals
+    residuals = y_test - y_pred
+    plt.figure(figsize=(12, 6))
+    plt.scatter(y_pred, residuals, alpha=0.5)
+    plt.axhline(y=0, color='r', linestyle='-')
+    plt.xlabel('Predicted')
+    plt.ylabel('Residuals')
+    plt.title('Residual Plot')
+    plt.tight_layout()
+    plt.show()
+
+    # Histogram of residuals
+    plt.figure(figsize=(12, 6))
+    plt.hist(residuals, bins=50)
+    plt.axvline(x=0, color='r', linestyle='-')
+    plt.xlabel('Residuals')
+    plt.ylabel('Frequency')
+    plt.title('Distribution of Residuals')
+    plt.tight_layout()
+    plt.show()
+
+if __name__ == "__main__":
+    # If running this script directly, load the data, train models and analyze feature importance
+    from merge_data import merge_data
+    from feature_engineering import engineer_features
+    from model_train import train_models
+    from hypertuning import tune_models
+    
+    df = merge_data()
+    X_engineered, y, existing_demo_socio_cols = engineer_features(df)
+    X_train, X_test, y_train, y_test, preprocessor, categorical_features, numerical_features, model_results = train_models(X_engineered, y)
+    tuned_models, tuning_results, best_model_name, best_model = tune_models(X_train, X_test, y_train, y_test, preprocessor, model_results)
+    
+    analyze_feature_importance(best_model_name, best_model, X_train, X_test, preprocessor, categorical_features, numerical_features)

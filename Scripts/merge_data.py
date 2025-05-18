@@ -1,3 +1,7 @@
+"""
+Module for merging multiple datasets into a single DataFrame for COVID-19 analysis.
+"""
+
 import os
 import pandas as pd
 from sklearn.impute import KNNImputer
@@ -57,7 +61,6 @@ def merge_data() -> pd.DataFrame:
 
     return merged_df
 
-# done 
 def load_and_clean_allmetrics() -> pd.DataFrame:
     """
     Load allmetrics_states.csv, clean the data, save it to the processed folder, and return it.
@@ -71,10 +74,7 @@ def load_and_clean_allmetrics() -> pd.DataFrame:
     5. Remove rows where the 'state' column is "India."
     6. Fill any missing values (NaN) with 0.
     7. Filter out rows with dates past 13/8/2021 (including that date).
-    8. Keep only the relevant columns:
-       - 'state', 'dates', 'cum_positive_cases', 'cum_positivity_rate', 'daily_positive_cases',
-         'cum_recovered', 'daily_recovered', 'cum_deceased', 'daily_deceased', 'daily_positivity_rate',
-         'daily_tests', 'cum_tests', 'test_per_million', 'daily_cases_per_million', 'daily_tests_per_million'.
+    8. Keep only the relevant columns.
     9. Save the cleaned DataFrame to the processed folder as a CSV file.
     10. Return the cleaned DataFrame.
 
@@ -129,18 +129,24 @@ def load_and_clean_allmetrics() -> pd.DataFrame:
     cutoff_date = pd.to_datetime('13/8/2021', format='%d/%m/%Y')
     df = df[df['dates'] < cutoff_date]
 
+    # Extract components from datetime for easier analysis
+    df['year'] = df['dates'].dt.year
+    df['month'] = df['dates'].dt.month
+    df['day_of_week'] = df['dates'].dt.dayofweek
+
     # Keep the columns we want
-    df = df[['state', 'dates', 'cum_positive_cases', 'cum_positivity_rate', 'daily_positive_cases',
-         'cum_recovered', 'daily_recovered', 'cum_deceased', 'daily_deceased', 'daily_positivity_rate',
-         'daily_tests', 'cum_tests', 'test_per_million', 'daily_cases_per_million', 'daily_tests_per_million']]
+    df = df[['state', 'dates', 'year', 'month', 'day_of_week', 
+             'cum_positive_cases', 'cum_positivity_rate', 'daily_positive_cases',
+             'cum_recovered', 'daily_recovered', 'cum_deceased', 'daily_deceased', 'daily_positivity_rate',
+             'daily_tests', 'cum_tests', 'test_per_million', 'daily_cases_per_million', 'daily_tests_per_million']]
     
     # Save the cleaned DataFrame to a CSV file
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
     df.to_csv(out_path, index=False)
     print(f'Cleaned data saved to {out_path}')
 
     return df
 
-# done
 def load_and_clean_states_data() -> pd.DataFrame:
     """
     Load state_wise_pop.csv, clean the data, save it to the processed folder, and return it.
@@ -149,15 +155,8 @@ def load_and_clean_states_data() -> pd.DataFrame:
        - If it exists, load and return the cleaned file.
        - If it does not exist, process the raw data.
     2. Read the raw CSV file.
-    3. Rename columns for consistency and readability:
-       - 'States/Uts' to 'state'
-       - 'population(2024)' to 'population'
-       - 'Male(literacy rate)' to 'Male literacy rate %'
-       - 'Female (literacy rate)Average (literacy rate)' to 'Female literacy rate %'
-       - 'average (literacy rate)' to 'Average literacy rate %'
-       - 'sex ratio (number of female per male)' to 'Female to Male ratio'.
-       - 'Area (sq. km)' to 'area'.
-    4. Remove unnecessary columns: 'population(1901)', 'population(1951)', 'population(2011)', 'population(2023)', 'Majority'.
+    3. Rename columns for consistency and readability.
+    4. Remove unnecessary columns.
     5. Replace '&' with 'and' in the 'state' column for uniformity.
     6. Replace any missing values ('-') with NaN.
     7. Impute missing values in numeric columns using KNNImputer.
@@ -217,7 +216,6 @@ def load_and_clean_states_data() -> pd.DataFrame:
 
     return df
 
-# done
 def load_and_clean_medicare_data() -> pd.DataFrame:
     """
     Load HospitalBedsIndia.csv, clean the data, save it to the processed folder, and return it.
@@ -228,17 +226,7 @@ def load_and_clean_medicare_data() -> pd.DataFrame:
     2. Read the raw CSV file.
     3. Drop the 'Sno' column as it is unnecessary.
     4. Rename the 'State/UT' column to 'state' for consistency.
-    5. Simplify column names for better readability:
-       - 'NumPrimaryHealthCenters_HMIS' to 'primary_health_centers'
-       - 'NumCommunityHealthCenters_HMIS' to 'community_health_centers'
-       - 'NumSubDistrictHospitals_HMIS' to 'sub_district_hospitals'
-       - 'NumDistrictHospitals_HMIS' to 'district_hospitals'
-       - 'TotalPublicHealthFacilities_HMIS' to 'public_health_facilities'
-       - 'NumPublicBeds_HMIS' to 'public_beds'
-       - 'NumRuralHospitals_NHP18' to 'rural_hospitals'
-       - 'NumRuralBeds_NHP18' to 'rural_beds'
-       - 'NumUrbanHospitals_NHP18' to 'urban_hospitals'
-       - 'NumUrbanBeds_NHP18' to 'urban_beds'.
+    5. Simplify column names for better readability.
     6. Replace '&' with 'and' in the 'state' column for uniformity.
     7. Replace any missing values ('-') with NaN.
     8. Impute missing values in numeric columns using KNNImputer.
@@ -347,3 +335,8 @@ def load_and_clean_testing_labs() -> pd.DataFrame:
     print(f'Cleaned data saved to {out_path}')
 
     return df
+
+if __name__ == "__main__":
+    # If running this script directly, perform the merge and return the data
+    merged_data = merge_data()
+    print(f"Merged data shape: {merged_data.shape}")

@@ -1,50 +1,97 @@
+"""
+Module for feature engineering on the COVID-19 dataset.
+"""
+
+import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.impute import SimpleImputer, KNNImputer
-from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
-import warnings
-warnings.filterwarnings('ignore')
+from sklearn.preprocessing import StandardScaler
 
-# Define your demographic and socioeconomic columns
-demographic_socioeconomic_cols = [
-    'population', 'Male literacy rate %', 'Female literacy rate %',
-    'Average literacy rate %', 'GDP', 'per capita in', 'Female to Male ratio',
-    'Hindu', 'Muslim', 'Christian', 'Sikhs', 'Buddhist', 'Others', 'density',
-    'primary_health_centers', 'community_health_centers', 'sub_district_hospitals',
-    'district_hospitals', 'public_health_facilities', 'public_beds',
-    'rural_hospitals', 'rural_beds', 'urban_hospitals', 'urban_beds',
-    'state'
-]
+def engineer_features(df):
+    """
+    Engineer features for COVID-19 prediction model.
+    
+    Args:
+        df (pd.DataFrame): The merged dataset containing COVID-19 data.
+        
+    Returns:
+        tuple: (X_engineered, y, existing_demo_socio_cols) where:
+            - X_engineered is the dataframe with engineered features
+            - y is the target variable
+            - existing_demo_socio_cols is a list of demographic and socioeconomic columns
+    """
+    # Define your demographic and socioeconomic columns
+    demographic_socioeconomic_cols = [
+        'population', 'Male literacy rate %', 'Female literacy rate %',
+        'Average literacy rate %', 'GDP', 'per capita in', 'Female to Male ratio',
+        'Hindu', 'Muslim', 'Christian', 'Sikhs', 'Buddhist', 'Others', 'density',
+        'primary_health_centers', 'community_health_centers', 'sub_district_hospitals',
+        'district_hospitals', 'public_health_facilities', 'public_beds',
+        'rural_hospitals', 'rural_beds', 'urban_hospitals', 'urban_beds',
+        'state'
+    ]
 
-print("\nTotal demographic and socioeconomic columns:", len(demographic_socioeconomic_cols))
-print(demographic_socioeconomic_cols)
+    print("\nTotal demographic and socioeconomic columns:", len(demographic_socioeconomic_cols))
+    print(demographic_socioeconomic_cols)
 
-# Check which demographic and socioeconomic columns exist in the dataset
-existing_demo_socio_cols = [col for col in demographic_socioeconomic_cols if col in df.columns]
-print(f"\nExisting demographic and socioeconomic columns: {len(existing_demo_socio_cols)}")
-print(existing_demo_socio_cols)
+    # Check which demographic and socioeconomic columns exist in the dataset
+    existing_demo_socio_cols = [col for col in demographic_socioeconomic_cols if col in df.columns]
+    print(f"\nExisting demographic and socioeconomic columns: {len(existing_demo_socio_cols)}")
+    print(existing_demo_socio_cols)
 
-# Check for missing values in demographic and socioeconomic columns
-print("\nMissing values in demographic and socioeconomic columns:")
-missing_values = df[existing_demo_socio_cols].isnull().sum()
-print(missing_values[missing_values > 0])
+    # Check for missing values in demographic and socioeconomic columns
+    print("\nMissing values in demographic and socioeconomic columns:")
+    missing_values = df[existing_demo_socio_cols].isnull().sum()
+    print(missing_values[missing_values > 0])
 
-# Define the target variable here - this was missing from the original code
-y = df['cum_positive_cases']
+    # Define the target variable
+    y = df['cum_positive_cases']
 
-# ====================== FEATURE ENGINEERING SECTION ======================
+    # Get the latest data for each state for feature engineering
+    latest_date = df['dates'].max()
+    latest_data = df[df['dates'] == latest_date].copy()
+
+    # Apply feature engineering to the latest data
+    X_engineered = engineer_demographic_features(latest_data, existing_demo_socio_cols)
+
+    # Visualize correlations of new engineered features with target
+    numeric_engineered = X_engineered.select_dtypes(include=['number']).columns
+    
+    # Merge with the target for correlation calculation
+    correlation_data = pd.concat([X_engineered[numeric_engineered], 
+                                 pd.DataFrame({'cum_positive_cases': y.loc[latest_data.index]})], 
+                                axis=1)
+    
+    correlation = correlation_data.corr()['cum_positive_cases'].sort_values(ascending=False)
+    print("\nTop 15 correlations with cumulative positive cases (engineered features):")
+    print(correlation.head(15))
+
+    # Visualize top engineered feature correlations
+    plt.figure(figsize=(14, 10))
+    top_corr = correlation.head(15)
+    correlation_df = pd.DataFrame(top_corr).reset_index()
+    correlation_df.columns = ['Feature', 'Correlation']
+    sns.barplot(x='Correlation', y='Feature', data=correlation_df)
+    plt.title('Top 15 Engineered Features: Correlation with Cumulative Positive Cases')
+    plt.axvline(x=0, color='r', linestyle='--')
+    plt.tight_layout()
+    plt.show()
+
+    return X_engineered, y.loc[latest_data.index], existing_demo_socio_cols
+
 def engineer_demographic_features(df, demographic_cols):
     """
-    Comprehensive feature engineering for demographic and socioeconomic variables
+    Comprehensive feature engineering for demographic and socioeconomic variables.
+    
+    Args:
+        df (pd.DataFrame): DataFrame containing demographic and socioeconomic data.
+        demographic_cols (list): List of demographic and socioeconomic column names.
+        
+    Returns:
+        pd.DataFrame: DataFrame with engineered features.
     """
     # Create a copy to avoid modifying the original
     X = df[demographic_cols].copy()
@@ -88,7 +135,9 @@ def engineer_demographic_features(df, demographic_cols):
     print("3. Creating diversity and inequality indices...")
     # Religious diversity (Herfindahl-Hirschman Index)
     religion_cols = ['Hindu', 'Muslim', 'Christian', 'Sikhs', 'Buddhist', 'Others']
-    if all(col in X.columns for col in religion_cols):
+    religion_cols = [col for col in religion_cols if col in X.columns]
+    
+    if len(religion_cols) >= 2:  # Need at least two religion columns for diversity index
         # Normalize to sum to 1
         religion_sum = X[religion_cols].sum(axis=1)
         for col in religion_cols:
@@ -194,67 +243,9 @@ def engineer_demographic_features(df, demographic_cols):
     print(f"\nFeature engineering complete! Created {X.shape[1]} features from {len(demographic_cols)} original features.")
     return X
 
-# Apply feature engineering to create enhanced features
-X_engineered = engineer_demographic_features(df, existing_demo_socio_cols)
-
-# Model comparison function - need to add this function definition
-def compare_models(models, X_train, X_test, y_train, y_test):
-    results = {}
-
-    for name, model in models.items():
-        print(f"\nTraining {name}...")
-
-        # Create pipeline with preprocessor and model
-        pipeline = Pipeline(steps=[
-            ('preprocessor', preprocessor),
-            ('model', model)
-        ])
-
-        # Fit the model
-        pipeline.fit(X_train, y_train)
-
-        # Make predictions
-        y_pred = pipeline.predict(X_test)
-
-        # Calculate metrics
-        rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-        mae = mean_absolute_error(y_test, y_pred)
-        r2 = r2_score(y_test, y_pred)
-
-        # Store results
-        results[name] = {
-            'model': pipeline,
-            'rmse': rmse,
-            'mae': mae,
-            'r2': r2
-        }
-
-        print(f"{name} - RMSE: {rmse:.2f}, MAE: {mae:.2f}, R²: {r2:.4f}")
-
-    return results
-
-# Check if 'socioeconomic_cluster' column was created
-if 'socioeconomic_cluster' in X_engineered.columns:
-    categorical_features = ['state', 'socioeconomic_cluster']
-else:
-    categorical_features = ['state']
-    print("Note: 'socioeconomic_cluster' not found, using only 'state' as categorical feature")
-
-# Split categorical and numerical features (make sure they exist in X_engineered)
-categorical_features = [col for col in categorical_features if col in X_engineered.columns]
-numerical_features = [col for col in X_engineered.columns if col not in categorical_features]
-
-# Create preprocessing pipelines
-preprocessor = ColumnTransformer(
-    transformers=[
-        ('num', Pipeline(steps=[
-            ('imputer', KNNImputer(n_neighbors=5)),  # Change to KNN imputer for better handling of relationships
-            ('scaler', StandardScaler())
-        ]), numerical_features),
-        ('cat', Pipeline(steps=[
-            ('imputer', SimpleImputer(strategy='most_frequent')),
-            ('onehot', OneHotEncoder(handle_unknown='ignore'))
-        ]), categorical_features)
-    ]
-)
-
+if __name__ == "__main__":
+    # If running this script directly, load the merged data and perform feature engineering
+    from merge_data import merge_data
+    df = merge_data()
+    X_engineered, y, existing_demo_socio_cols = engineer_features(df)
+    print(f"Engineered features shape: {X_engineered.shape}")
