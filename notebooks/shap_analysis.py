@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 
-def run_shap_analysis(model_name, model, X_train, X_test, preprocessor, categorical_features, numerical_features):
+def run_shap_analysis(model_name, model, X_train, X_test, y_train=None, y_test=None, preprocessor=None, categorical_features=None, numerical_features=None):
     """
     Perform SHAP analysis on the trained model.
     
@@ -14,6 +14,7 @@ def run_shap_analysis(model_name, model, X_train, X_test, preprocessor, categori
         model_name (str): Name of the model.
         model: Trained model instance (Pipeline).
         X_train, X_test: Training and testing data.
+        y_train, y_test: Optional. Training and testing target values (not used in SHAP analysis but included for API consistency).
         preprocessor: ColumnTransformer for preprocessing the data.
         categorical_features: List of categorical feature names.
         numerical_features: List of numerical feature names.
@@ -124,4 +125,4 @@ if __name__ == "__main__":
     X_train, X_test, y_train, y_test, preprocessor, categorical_features, numerical_features, model_results = train_models(X_engineered, y)
     tuned_models, tuning_results, best_model_name, best_model = tune_models(X_train, X_test, y_train, y_test, preprocessor, model_results)
     
-    run_shap_analysis(best_model_name, best_model, X_train, X_test, preprocessor, categorical_features, numerical_features)
+    run_shap_analysis(best_model_name, best_model, X_train, X_test, y_train, y_test, preprocessor, categorical_features, numerical_features)

@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-def analyze_feature_importance(model_name, model, X_train, X_test, preprocessor, categorical_features, numerical_features):
+def analyze_feature_importance(model_name, model, X_train, X_test, y_train, y_test, preprocessor, categorical_features, numerical_features):
     """
     Analyze and visualize feature importance for the given model.
     
@@ -15,6 +15,7 @@ def analyze_feature_importance(model_name, model, X_train, X_test, preprocessor,
         model_name (str): Name of the model.
         model: Trained model instance (Pipeline).
         X_train, X_test: Training and testing data.
+        y_train, y_test: Training and testing target values.
         preprocessor: ColumnTransformer for preprocessing the data.
         categorical_features: List of categorical feature names.
         numerical_features: List of numerical feature names.
@@ -149,4 +150,6 @@ if __name__ == "__main__":
     X_train, X_test, y_train, y_test, preprocessor, categorical_features, numerical_features, model_results = train_models(X_engineered, y)
     tuned_models, tuning_results, best_model_name, best_model = tune_models(X_train, X_test, y_train, y_test, preprocessor, model_results)
     
-    analyze_feature_importance(best_model_name, best_model, X_train, X_test, preprocessor, categorical_features, numerical_features)
+    analyze_feature_importance(best_model_name, best_model, X_train, X_test, y_train, y_test, preprocessor, categorical_features, numerical_features)
+
+    #dsfdfd
