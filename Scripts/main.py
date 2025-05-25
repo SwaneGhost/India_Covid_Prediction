@@ -49,14 +49,15 @@ from Code.enhance_lasso import enhance_lasso
 
 # Step 5: Enhance Lasso Regression
 print("\nStep 5: Enhancing Lasso Regression...")
-best_model = enhance_lasso(X_train, X_test, y_train, y_test, categorical_features, numerical_features)
+best_model, metrics = enhance_lasso(X_train, X_test, y_train, y_test, categorical_features, numerical_features)
 best_model_name = "Enhanced Lasso"
-tuned_models = {best_model_name: best_model}
-tuning_results = {best_model_name: {
-    'best_params': best_model.named_steps['model'].get_params(),
-    'rmse': None,  # Already printed
-    'r2': None
-}}
+tuning_results = {
+    best_model_name: {
+        'best_params': metrics['model'].get_params(),
+        'rmse': metrics['rmse'],
+        'r2': metrics['r2']
+    }
+}
 
 # Step 6: Analyze feature importance
 print("\nStep 6: Analyzing feature importance...")
@@ -77,8 +78,15 @@ except ImportError:
 # Step 8: Generate summary
 print("\nStep 8: Generating summary...")
 from results.Summary import generate_summary
-generate_summary(best_model_name, best_model, model_results, tuning_results,
-                 X_train, preprocessor, categorical_features, numerical_features)
+generate_summary(
+    best_model_name, best_model,
+    model_results={},  # or pass your earlier results if needed
+    tuning_results=tuning_results,
+    X_train=X_train,
+    preprocessor=None,  # or the one used, if needed
+    categorical_features=categorical_features,
+    numerical_features=numerical_features
+)
 
 
 print("\nAnalysis complete! Check the results directory for outputs.")
