@@ -33,19 +33,19 @@ df = pd.read_csv('../Data/Processed/merged_data.csv')
 
 # Step 2: Perform Exploratory Data Analysis
 print("\nStep 2: Performing Exploratory Data Analysis...")
-from EDA import perform_eda
+from notebooks.EDA import perform_eda
 perform_eda(df)
 
 # Step 3: Engineer features
 print("\nStep 3: Engineering features...")
-from feature_engineering import engineer_features
+from Code.feature_engineering import engineer_features
 X_engineered, y, demographics_socioeconomic_cols = engineer_features(df)
 
 # Step 4: Train models
 print("\nStep 4: Training models...")
-from model_train import train_models
+from Code.model_train import train_models
 X_train, X_test, y_train, y_test, preprocessor, categorical_features, numerical_features, model_results = train_models(X_engineered, y)
-from enhance_lasso import enhance_lasso
+from Code.enhance_lasso import enhance_lasso
 
 # Step 5: Enhance Lasso Regression
 print("\nStep 5: Enhancing Lasso Regression...")
@@ -60,7 +60,7 @@ tuning_results = {best_model_name: {
 
 # Step 6: Analyze feature importance
 print("\nStep 6: Analyzing feature importance...")
-from feature_importance import analyze_feature_importance
+from notebooks.feature_importance import analyze_feature_importance
 analyze_feature_importance(best_model_name, best_model, 
                          X_train, X_test, y_train, y_test,
                          preprocessor, categorical_features, numerical_features)
@@ -76,7 +76,7 @@ except ImportError:
 
 # Step 8: Generate summary
 print("\nStep 8: Generating summary...")
-from summary import generate_summary
+from results.Summary import generate_summary
 generate_summary(best_model_name, best_model, model_results, tuning_results,
                  X_train, preprocessor, categorical_features, numerical_features)
 
