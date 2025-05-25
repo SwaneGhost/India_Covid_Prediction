@@ -61,7 +61,7 @@ def perform_eda(df):
 
     # 2. Time Series Analysis
     print("\n----- Time Series Analysis -----")
-
+    #dds
     # Ensure dates column is in datetime format
     if df['dates'].dtype != 'datetime64[ns]':
         df['dates'] = pd.to_datetime(df['dates'])
