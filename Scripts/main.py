@@ -21,7 +21,6 @@ import seaborn as sns
 import warnings
 warnings.filterwarnings('ignore')
 
-
 # Ensure the Data/Processed directory exists
 os.makedirs(os.path.join("Data", "Processed"), exist_ok=True)
 
@@ -30,42 +29,38 @@ print("Step 1: Merging and preparing data...")
 # from merge_data import merge_data
 # df = merge_data()
 # print(f"Dataset loaded with shape: {df.shape}")
-df = pd.read_csv(r'C:\Users\Yaki.Naftali\Desktop\לימודים יקי\סמסטר ו\סדנה\project\India_Covid_Prediction\Data\Processed\merged_data.csv')
+df = pd.read_csv('../Data/Processed/merged_data.csv')
 
 # Step 2: Perform Exploratory Data Analysis
 print("\nStep 2: Performing Exploratory Data Analysis...")
-from notebooks.EDA import perform_eda
+from EDA import perform_eda
 perform_eda(df)
 
 # Step 3: Engineer features
 print("\nStep 3: Engineering features...")
-from code.feature_engineering import engineer_features
+from feature_engineering import engineer_features
 X_engineered, y, demographics_socioeconomic_cols = engineer_features(df)
 
 # Step 4: Train models
 print("\nStep 4: Training models...")
-from code.model_train import train_models
+from model_train import train_models
 X_train, X_test, y_train, y_test, preprocessor, categorical_features, numerical_features, model_results = train_models(X_engineered, y)
+from enhance_lasso import enhance_lasso
 
-
-
-
-# Step 5: Tuning + Enhanced Random Forest
-print("\nStep 5: Enhancing Random Forest Model...")
-from enhance_rf import enhance_random_forest
-best_model = enhance_random_forest(X_train, X_test, y_train, y_test, preprocessor)
-best_model_name = "Enhanced Random Forest"
+# Step 5: Enhance Lasso Regression
+print("\nStep 5: Enhancing Lasso Regression...")
+best_model = enhance_lasso(X_train, X_test, y_train, y_test, categorical_features, numerical_features)
+best_model_name = "Enhanced Lasso"
 tuned_models = {best_model_name: best_model}
 tuning_results = {best_model_name: {
     'best_params': best_model.named_steps['model'].get_params(),
-    'rmse': None,  # already printed
+    'rmse': None,  # Already printed
     'r2': None
 }}
 
-
 # Step 6: Analyze feature importance
 print("\nStep 6: Analyzing feature importance...")
-from notebooks.feature_importance import analyze_feature_importance
+from feature_importance import analyze_feature_importance
 analyze_feature_importance(best_model_name, best_model, 
                          X_train, X_test, y_train, y_test,
                          preprocessor, categorical_features, numerical_features)
@@ -81,8 +76,9 @@ except ImportError:
 
 # Step 8: Generate summary
 print("\nStep 8: Generating summary...")
-from results.Summary import generate_summary
-generate_summary(best_model_name, best_model, model_results, tuning_results, 
-               X_train, preprocessor, categorical_features, numerical_features)
+from summary import generate_summary
+generate_summary(best_model_name, best_model, model_results, tuning_results,
+                 X_train, preprocessor, categorical_features, numerical_features)
+
 
 print("\nAnalysis complete! Check the results directory for outputs.")
