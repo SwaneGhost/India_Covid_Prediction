@@ -21,6 +21,7 @@ import seaborn as sns
 import warnings
 warnings.filterwarnings('ignore')
 
+
 # Ensure the Data/Processed directory exists
 os.makedirs(os.path.join("Data", "Processed"), exist_ok=True)
 
@@ -29,7 +30,7 @@ print("Step 1: Merging and preparing data...")
 # from merge_data import merge_data
 # df = merge_data()
 # print(f"Dataset loaded with shape: {df.shape}")
-df = pd.read_csv('../Data/Processed/merged_data.csv')
+df = pd.read_csv(r'C:\Users\Yaki.Naftali\Desktop\לימודים יקי\סמסטר ו\סדנה\project\India_Covid_Prediction\Data\Processed\merged_data.csv')
 
 # Step 2: Perform Exploratory Data Analysis
 print("\nStep 2: Performing Exploratory Data Analysis...")
@@ -38,21 +39,29 @@ perform_eda(df)
 
 # Step 3: Engineer features
 print("\nStep 3: Engineering features...")
-from Code.feature_engineering import engineer_features
+from code.feature_engineering import engineer_features
 X_engineered, y, demographics_socioeconomic_cols = engineer_features(df)
 
 # Step 4: Train models
 print("\nStep 4: Training models...")
-from Code.model_train import train_models
+from code.model_train import train_models
 X_train, X_test, y_train, y_test, preprocessor, categorical_features, numerical_features, model_results = train_models(X_engineered, y)
 
-# Step 5: Hyperparameter tuning
-print("\nStep 5: Tuning hyperparameters...")
-from Code.HyperTuning import tune_models
-tuned_models, tuning_results, best_model_name, best_model = tune_models(
-    X_train, X_test, y_train, y_test, 
-    preprocessor, model_results
-)
+
+
+
+# Step 5: Tuning + Enhanced Random Forest
+print("\nStep 5: Enhancing Random Forest Model...")
+from enhance_rf import enhance_random_forest
+best_model = enhance_random_forest(X_train, X_test, y_train, y_test, preprocessor)
+best_model_name = "Enhanced Random Forest"
+tuned_models = {best_model_name: best_model}
+tuning_results = {best_model_name: {
+    'best_params': best_model.named_steps['model'].get_params(),
+    'rmse': None,  # already printed
+    'r2': None
+}}
+
 
 # Step 6: Analyze feature importance
 print("\nStep 6: Analyzing feature importance...")
