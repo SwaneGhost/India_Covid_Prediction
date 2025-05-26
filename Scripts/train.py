@@ -73,6 +73,8 @@ def train_eval():
                 "n_estimators": trial.suggest_int("n_estimators", 10, 2000),
                 "subsample": trial.suggest_float("subsample", 0.5, 1.0),
                 "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
+                "reg_alpha": trial.suggest_float("reg_alpha", 0.0, 1.0),
+                "reg_lambda": trial.suggest_float("reg_lambda", 0.0, 1.0),
                 "random_state": config["seed"]
             }
             # Inner CV for hyperparameter tuning
@@ -124,6 +126,12 @@ def train_eval():
         best_params_train_r2.append(train_r2)
         best_params_test_r2.append(test_r2)
         best_params_list.append(study.best_params)
+
+        # Print the results
+        print(f"Fold {len(best_params_list)}:")
+        print(f"Train RMSE: {train_rmse:.4f}, Test RMSE: {test_rmse:.4f}")
+        print(f"Train MAE: {train_mae:.4f}, Test MAE: {test_mae:.4f}")
+        print(f"Train R^2: {train_r2:.4f}, Test R^2: {test_r2:.4f}")
 
     # Find the index of the median RMSE for the test set
     median_index = np.argsort(best_params_test_rmse)[len(best_params_test_rmse) // 2]
