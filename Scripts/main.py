@@ -70,22 +70,26 @@ model = train_improved_elasticnet_model(df_selected, split_type='by_state')
 
 
 
-# # Step 6: Analyze feature importance
-# print("\nStep 6: Analyzing feature importance...")
-# from notebooks.feature_importance import analyze_feature_importance
-# analyze_feature_importance(best_model_name, best_model,
-#                          X_train, X_test, y_train, y_test,
-#                          preprocessor, categorical_features, numerical_features)
-#
-# # Step 7: Run SHAP analysis (if available)
-# try:
-#     print("\nStep 7: Performing SHAP analysis...")
-#     from shap_analysis import run_shap_analysis
-#     run_shap_analysis(best_model_name, best_model, X_train, X_test,
-#                    y_train, y_test, preprocessor, categorical_features, numerical_features)
-# except ImportError:
-#     print("SHAP analysis module not available or has missing dependencies.")
-#
+# Step 6: Analyze feature importance
+print("\nStep 6: Analyzing feature importance...")
+from notebooks.feature_importance import run_feature_importance
+
+importance_results = run_feature_importance(model, df_selected)
+
+
+# === Step 7: SHAP Analysis ===
+print("\nStep 7: Running SHAP feature importance analysis...")
+from notebooks.shap_analysis import run_shap_analysis
+
+# Use same training data used in model training (not split)
+shap_values, explainer = run_shap_analysis(
+    model=model,
+    X_train=X_selected,  # or the DataFrame with raw features used to train
+    feature_names=X_selected.columns.tolist(),  # optional
+    max_display=9
+)
+
+
 # # Step 8: Generate summary
 # print("\nStep 8: Generating summary...")
 # from results.Summary import generate_summary
