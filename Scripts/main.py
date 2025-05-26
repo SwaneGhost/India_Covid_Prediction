@@ -13,49 +13,63 @@ Usage:
     python main.py
 """
 
-import os
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-import warnings
-warnings.filterwarnings('ignore')
 
-# Ensure the Data/Processed directory exists
-os.makedirs(os.path.join("Data", "Processed"), exist_ok=True)
-
-# Step 1: Merge and prepare data
+# === Step 1: Merge and prepare data ===
 print("Step 1: Merging and preparing data...")
-# from merge_data import merge_data
-# df = merge_data()
-# print(f"Dataset loaded with shape: {df.shape}")
-df = pd.read_csv('../Data/Processed/merged_data.csv')
+from Code.enhanced_data import enhanced_data
+df = enhanced_data()
 
-# # Step 2: Perform Exploratory Data Analysis
+# === Step 2: (Optional EDA) ===
 # print("\nStep 2: Performing Exploratory Data Analysis...")
 # from notebooks.EDA import perform_eda
 # perform_eda(df)
 
-# Step 3: Engineer features
+# === Step 3: Engineer features ===
 print("\nStep 3: Engineering features...")
-from Code.feature_engineering import engineer_features
-X_engineered, y, demographics_socioeconomic_cols = engineer_features(df)
+from Code.feature_engineering import improved_feature_engineering
+df = improved_feature_engineering(df)
 
-# Step 4: Train models
-print("\nStep 4: Training models...")
-from Code.model_train import train_models
-X_train, X_test, y_train, y_test, preprocessor, categorical_features, numerical_features, model_results = train_models(X_engineered, y)
+# === Step 4: Feature Selection ===
+print("\nStep 4: Selecting top features...")
+from Code.feature_selection import select_top_k_features
 
-from Code.enhance_lasso import strategy_recursive_feature_elimination
+# Prepare data for selection
+X_full = df.drop(columns=['cum_positive_cases', 'date', 'dates'])
+y = df['cum_positive_cases']
 
-# Step 5: Enhance Lasso Regression
-# Step 5: Enhance Lasso Regression with all strategies and ensemble
-print("\nStep 5: Enhancing Lasso Regression (Strategies 2, 3, and Ensemble)...")
-model, metrics, overfitting_score = strategy_recursive_feature_elimination(
-    X_train, X_test, y_train, y_test,
-    categorical_features, numerical_features
-)
+# Optionally: use log1p target if your model uses it
+# y = np.log1p(y)
+
+X_selected, selected_features, scores_df = select_top_k_features(X_full, y, k=30, return_scores=True)
+print("📌 Top selected features:")
+print(selected_features)
+
+# Add back selected features + categorical (e.g., 'state') for training
+X_selected['state'] = df['state']  # If using 'state' in training
+df_selected = X_selected.copy()
+df_selected['cum_positive_cases'] = y
+df_selected['date'] = df['date']
+df_selected['dates'] = df['dates']
+
+# === Step 5: Train Models ===
+print("\nStep 5: Training models...")
+from Code.model_train import train_improved_elasticnet_model
+model = train_improved_elasticnet_model(df_selected, split_type='by_state')  # or 'random', 'time'
+
+# # === Step 6: Hyperparameter Tuning ===
+# print("\nStep 6: Hyperparameter tuning...")
+# from Code.HyperTuning import tune_elasticnet_model
 #
+# categorical_features = ['state']
+# numerical_features = X_selected.select_dtypes(include=['float64', 'int64']).columns.difference(categorical_features).tolist()
+#
+# # Tune on same selected feature set
+# best_model = tune_elasticnet_model(X_selected, y, categorical_features, numerical_features)
+
+
+
 # # Step 6: Analyze feature importance
 # print("\nStep 6: Analyzing feature importance...")
 # from notebooks.feature_importance import analyze_feature_importance

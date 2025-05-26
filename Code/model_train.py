@@ -2,159 +2,187 @@
 Module for training machine learning models on the COVID-19 dataset.
 """
 
-import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.compose import ColumnTransformer
+from sklearn.model_selection import train_test_split, cross_val_score, GroupKFold, TimeSeriesSplit
 from sklearn.pipeline import Pipeline
-from sklearn.impute import SimpleImputer, KNNImputer
-from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder, RobustScaler
+from sklearn.impute import SimpleImputer
+from sklearn.metrics import mean_squared_error, r2_score
 
-def train_models(X_engineered, y):
-    """
-    Train machine learning models on the engineered features.
-    
-    Args:
-        X_engineered (pd.DataFrame): DataFrame with engineered features.
-        y (pd.Series): Target variable (cumulative positive cases).
-        
-    Returns:
-        tuple: (X_train, X_test, y_train, y_test, preprocessor, categorical_features, numerical_features, model_results)
-    """
-    # Train-test split with engineered features
-    X_train, X_test, y_train, y_test = train_test_split(X_engineered, y, test_size=0.2, random_state=42)
-    print(f"\nTraining set size: {X_train.shape}")
-    print(f"Test set size: {X_test.shape}")
 
-    # Check if 'socioeconomic_cluster' column was created
-    if 'socioeconomic_cluster' in X_engineered.columns:
-        categorical_features = ['state', 'socioeconomic_cluster']
-    else:
-        categorical_features = ['state']
-        print("Note: 'socioeconomic_cluster' not found, using only 'state' as categorical feature")
+def remove_highly_correlated_features(df, target_col='cum_positive_cases',
+                                       target_corr_threshold=0.93,
+                                       feature_corr_threshold=0.85):
+    df_clean = df.copy()
 
-    # Split categorical and numerical features (make sure they exist in X_engineered)
-    categorical_features = [col for col in categorical_features if col in X_engineered.columns]
-    numerical_features = [col for col in X_engineered.columns if col not in categorical_features]
+    # Remove identifiers
+    drop_cols = ['dates', 'date']
+    df_features = df_clean.drop(columns=drop_cols)
 
-    # Create preprocessing pipelines
+    # Keep only numeric features for correlation
+    numeric_df = df_features.select_dtypes(include=[np.number])
+
+    # 1. Correlation with target
+    corr_with_target = numeric_df.corr()[target_col].drop(target_col)
+    to_drop_target = corr_with_target[abs(corr_with_target) > target_corr_threshold].index.tolist()
+
+    print(f"📉 Features too correlated with target (> {target_corr_threshold}):")
+    print(to_drop_target)
+
+    df_clean.drop(columns=to_drop_target, inplace=True)
+
+    # 2. Correlation between features
+    numeric_df = df_clean.select_dtypes(include=[np.number])
+    corr_matrix = numeric_df.drop(columns=[target_col]).corr().abs()
+    upper_tri = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
+
+    to_drop_features = [column for column in upper_tri.columns if any(upper_tri[column] > feature_corr_threshold)]
+
+    print(f"🔁 Features highly correlated with others (> {feature_corr_threshold}):")
+    print(to_drop_features)
+
+    df_clean.drop(columns=to_drop_features, inplace=True)
+
+    print(f"✅ Final shape after removing correlated features: {df_clean.shape}")
+
+    return df_clean
+
+
+from sklearn.linear_model import ElasticNetCV
+
+def train_improved_elasticnet_model(df, split_type='random', use_feature_selection=True):
+    """Improved ElasticNet model with feature cleaning and conservative engineering"""
+
+    df = remove_highly_correlated_features(df)
+    print(f"🔧 Splitting type: {split_type}")
+
+    # Define target and features
+    target = 'cum_positive_cases'
+    id_cols = ['dates', 'date']
+    existing_id_cols = [col for col in id_cols if col in df.columns]
+    X = df.drop(columns=[target] + existing_id_cols)
+    y = df[target]
+
+    categorical_features = ['state'] if 'state' in X.columns else []
+    numerical_features = X.select_dtypes(include=['float64', 'int64']).columns.difference(categorical_features).tolist()
+
+    # Preprocessing
     preprocessor = ColumnTransformer(
         transformers=[
-            ('num', Pipeline(steps=[
-                ('imputer', KNNImputer(n_neighbors=5)),  # Change to KNN imputer for better handling of relationships
-                ('scaler', StandardScaler())
+            ('num', Pipeline([
+                ('imputer', SimpleImputer(strategy='median')),
+                ('scaler', RobustScaler())
             ]), numerical_features),
-            ('cat', Pipeline(steps=[
-                ('imputer', SimpleImputer(strategy='most_frequent')),
-                ('onehot', OneHotEncoder(handle_unknown='ignore'))
-            ]), categorical_features)
+            ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), categorical_features)
+        ] if categorical_features else [
+            ('num', Pipeline([
+                ('imputer', SimpleImputer(strategy='median')),
+                ('scaler', RobustScaler())
+            ]), numerical_features)
         ]
     )
 
-    # Define models to compare
-    models = {
-        'Linear Regression': LinearRegression(),
-        'Ridge Regression': Ridge(),
-        'Lasso Regression': Lasso(),
-        'ElasticNet': ElasticNet(),
-        'Random Forest': RandomForestRegressor(n_estimators=100, random_state=42),
-        'Gradient Boosting': GradientBoostingRegressor(n_estimators=100, random_state=42)
-    }
+    # Feature selection + ElasticNetCV
+    if use_feature_selection:
+        from sklearn.feature_selection import SelectKBest, f_regression
+        feature_selector = SelectKBest(score_func=f_regression, k=min(20, len(numerical_features)))
 
-    # Compare models with engineered features
-    print("\n--- Model Comparison Using Engineered Demographic & Socioeconomic Features ---")
-    model_results = compare_models(models, X_train, X_test, y_train, y_test, preprocessor)
-
-    # Visualize model comparison
-    model_names = list(model_results.keys())
-    rmse_values = [model_results[model]['rmse'] for model in model_names]
-    r2_values = [model_results[model]['r2'] for model in model_names]
-
-    plt.figure(figsize=(14, 6))
-
-    plt.subplot(1, 2, 1)
-    bars = plt.bar(model_names, rmse_values, color='skyblue')
-    plt.title('RMSE by Model with Engineered Features (Lower is Better)')
-    plt.xticks(rotation=45)
-    plt.ylabel('RMSE')
-    for bar in bars:
-        plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 5,
-                f'{bar.get_height():.2f}', ha='center')
-
-    plt.subplot(1, 2, 2)
-    bars = plt.bar(model_names, r2_values, color='lightgreen')
-    plt.title('R² by Model with Engineered Features (Higher is Better)')
-    plt.xticks(rotation=45)
-    plt.ylabel('R²')
-    for bar in bars:
-        plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
-                f'{bar.get_height():.4f}', ha='center')
-
-    plt.tight_layout()
-    plt.show()
-
-    # Identify the best performing model based on R²
-    best_model_name = max(model_results, key=lambda x: model_results[x]['r2'])
-    print(f"\nBest performing model: {best_model_name} with R² = {model_results[best_model_name]['r2']:.4f}")
-
-    return X_train, X_test, y_train, y_test, preprocessor, categorical_features, numerical_features, model_results
-
-def compare_models(models, X_train, X_test, y_train, y_test, preprocessor):
-    """
-    Compare different machine learning models.
-    
-    Args:
-        models (dict): Dictionary of machine learning models to compare.
-        X_train, X_test, y_train, y_test: Training and testing data.
-        preprocessor: ColumnTransformer for preprocessing the data.
-        
-    Returns:
-        dict: Dictionary with model results.
-    """
-    results = {}
-
-    for name, model in models.items():
-        print(f"\nTraining {name}...")
-
-        # Create pipeline with preprocessor and model
-        pipeline = Pipeline(steps=[
+        model = Pipeline(steps=[
             ('preprocessor', preprocessor),
-            ('model', model)
+            ('feature_selection', feature_selector),
+            ('regressor', ElasticNetCV(
+                l1_ratio=[.1, .3, .5, .7, .9, .95, .99, 1],
+                alphas=np.logspace(-4, 1, 50),
+                max_iter=10000,
+                cv=10,
+                random_state=42
+            ))
+        ])
+    else:
+        model = Pipeline(steps=[
+            ('preprocessor', preprocessor),
+            ('regressor', ElasticNetCV(
+                l1_ratio=[.1, .3, .5, .7, .9, .95, .99, 1],
+                alphas=np.logspace(-4, 1, 50),
+                max_iter=10000,
+                cv=10,
+                random_state=42
+            ))
         ])
 
-        # Fit the model
-        pipeline.fit(X_train, y_train)
+    # === Splitting ===
+    if split_type == 'random':
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        model.fit(X_train, y_train)
 
-        # Make predictions
-        y_pred = pipeline.predict(X_test)
+    elif split_type == 'by_state':
+        unique_states = df['state'].unique()
+        np.random.seed(42)
+        np.random.shuffle(unique_states)
+        train_states = unique_states[:int(0.8 * len(unique_states))]
+        X_train = X[df['state'].isin(train_states)]
+        y_train = y[df['state'].isin(train_states)]
+        X_test = X[~df['state'].isin(train_states)]
+        y_test = y[~df['state'].isin(train_states)]
+        model.fit(X_train, y_train)
 
-        # Calculate metrics
-        rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-        mae = mean_absolute_error(y_test, y_pred)
-        r2 = r2_score(y_test, y_pred)
+    elif split_type == 'time':
+        df_sorted = df.sort_values(by='date' if 'date' in df.columns else df.index)
+        split_index = int(0.8 * len(df_sorted))
+        train_idx = df_sorted.index[:split_index]
+        test_idx = df_sorted.index[split_index:]
+        X_train = X.loc[train_idx]
+        y_train = y.loc[train_idx]
+        X_test = X.loc[test_idx]
+        y_test = y.loc[test_idx]
+        model.fit(X_train, y_train)
 
-        # Store results
-        results[name] = {
-            'model': pipeline,
-            'rmse': rmse,
-            'mae': mae,
-            'r2': r2
-        }
+    else:
+        raise ValueError("Invalid split_type. Choose from 'random', 'by_state', or 'time'.")
 
-        print(f"{name} - RMSE: {rmse:.2f}, MAE: {mae:.2f}, R²: {r2:.4f}")
+    # === Evaluation ===
+    y_pred = model.predict(X_test)
+    rmse = mean_squared_error(y_test, y_pred, squared=False)
+    r2 = r2_score(y_test, y_pred)
 
-    return results
+    baseline_pred = np.full_like(y_test, y_train.mean())
+    baseline_rmse = mean_squared_error(y_test, baseline_pred, squared=False)
+    baseline_r2 = r2_score(y_test, baseline_pred)
 
-if __name__ == "__main__":
-    # If running this script directly, load the data, perform feature engineering and train models
-    from merge_data import merge_data
-    from feature_engineering import engineer_features
-    
-    df = merge_data()
-    X_engineered, y, existing_demo_socio_cols = engineer_features(df)
-    X_train, X_test, y_train, y_test, preprocessor, categorical_features, numerical_features, model_results = train_models(X_engineered, y)
+    print(f"📈 RMSE: {rmse:.2f} (Baseline: {baseline_rmse:.2f})")
+    print(f"📊 R² Score: {r2:.4f} (Baseline: {baseline_r2:.4f})")
+
+    if hasattr(model.named_steps['regressor'], 'alpha_'):
+        print(f"🎯 Selected ElasticNet alpha: {model.named_steps['regressor'].alpha_:.6f}")
+        print(f"🔗 Selected l1_ratio: {model.named_steps['regressor'].l1_ratio_:.2f}")
+
+    # === Cross-validation ===
+    print("⏳ Performing cross-validation...")
+    if split_type == 'by_state':
+        cv = GroupKFold(n_splits=5)
+        groups = X['state']
+    elif split_type == 'time':
+        cv = TimeSeriesSplit(n_splits=5)
+        groups = None
+    else:
+        cv = 10
+        groups = None
+
+    scores = cross_val_score(model, X, y, cv=cv, scoring='r2', groups=groups)
+    print(f"✅ Cross-validated R²: Mean = {scores.mean():.4f}, Std = {scores.std():.4f}")
+
+    # Overfitting check
+    train_score = model.score(X_train, y_train)
+    overfitting_gap = train_score - r2
+    print(f"🔍 Training R²: {train_score:.4f}")
+    print(f"🔍 Test R²: {r2:.4f}")
+    print(f"⚠ Overfitting gap: {overfitting_gap:.4f}")
+
+    if overfitting_gap > 0.1:
+        print("🚨 Overfitting detected. Try more regularization or simpler features.")
+
+    return model
+
+
+
