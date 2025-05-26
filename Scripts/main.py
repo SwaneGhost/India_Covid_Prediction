@@ -56,7 +56,10 @@ df_selected['dates'] = df['dates']
 # === Step 5: Train Models ===
 print("\nStep 5: Training models...")
 from Code.model_train import train_improved_elasticnet_model
-model = train_improved_elasticnet_model(df_selected, split_type='by_state')
+model, X_train_final, X_test_final, y_train, y_test = train_improved_elasticnet_model(df_selected, split_type='by_state')
+
+import joblib
+joblib.dump(model, 'trained_elasticnet_model.joblib')
 
 # # === Step 6: Hyperparameter Tuning ===
 # print("\nStep 6: Hyperparameter tuning...")
@@ -69,25 +72,26 @@ model = train_improved_elasticnet_model(df_selected, split_type='by_state')
 # best_model = tune_elasticnet_model(X_selected, y, categorical_features, numerical_features)
 
 
+#
+# # Step 6: Analyze feature importance
+# print("\nStep 6: Analyzing feature importance...")
+# from notebooks.feature_importance import run_feature_importance
+#
+# importance_results = run_feature_importance(model, X_train_final, X_test_final, y_train, y_test)
+#
+#
+#
+# # === Step 7: SHAP Analysis ===
+# print("\nStep 7: Running SHAP feature importance analysis...")
+# from notebooks.shap_analysis import run_shap_analysis
+#
+# # Use same training data used in model training (not split)
+# shap_values, explainer = run_shap_analysis(model, X_train_final,X_test_final)
 
-# Step 6: Analyze feature importance
-print("\nStep 6: Analyzing feature importance...")
-from notebooks.feature_importance import run_feature_importance
-
-importance_results = run_feature_importance(model, df_selected)
-
-
-# === Step 7: SHAP Analysis ===
-print("\nStep 7: Running SHAP feature importance analysis...")
-from notebooks.shap_analysis import run_shap_analysis
-
-# Use same training data used in model training (not split)
-shap_values, explainer = run_shap_analysis(
-    model=model,
-    X_train=X_selected,  # or the DataFrame with raw features used to train
-    feature_names=X_selected.columns.tolist(),  # optional
-    max_display=9
-)
+# step 8: Summary
+print("\n Step 8: Demo")
+from notebooks.Demo import Demo
+Demo()
 
 
 # # Step 8: Generate summary

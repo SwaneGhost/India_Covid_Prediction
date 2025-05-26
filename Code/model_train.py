@@ -88,7 +88,7 @@ def train_improved_elasticnet_model(df, split_type='random', use_feature_selecti
         from sklearn.feature_selection import SelectKBest, f_regression
         feature_selector = SelectKBest(score_func=f_regression, k=min(20, len(numerical_features)))
 
-        model = Pipeline(steps=[
+        model_pipeline = Pipeline(steps=[
             ('preprocessor', preprocessor),
             ('feature_selection', feature_selector),
             ('regressor', ElasticNetCV(
@@ -100,7 +100,7 @@ def train_improved_elasticnet_model(df, split_type='random', use_feature_selecti
             ))
         ])
     else:
-        model = Pipeline(steps=[
+        model_pipeline = Pipeline(steps=[
             ('preprocessor', preprocessor),
             ('regressor', ElasticNetCV(
                 l1_ratio=[.1, .3, .5, .7, .9, .95, .99, 1],
@@ -114,7 +114,7 @@ def train_improved_elasticnet_model(df, split_type='random', use_feature_selecti
     # === Splitting ===
     if split_type == 'random':
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        model.fit(X_train, y_train)
+        model_pipeline.fit(X_train, y_train)
 
     elif split_type == 'by_state':
         unique_states = df['state'].unique()
@@ -125,7 +125,7 @@ def train_improved_elasticnet_model(df, split_type='random', use_feature_selecti
         y_train = y[df['state'].isin(train_states)]
         X_test = X[~df['state'].isin(train_states)]
         y_test = y[~df['state'].isin(train_states)]
-        model.fit(X_train, y_train)
+        model_pipeline.fit(X_train, y_train)
 
     elif split_type == 'time':
         df_sorted = df.sort_values(by='date' if 'date' in df.columns else df.index)
@@ -136,13 +136,17 @@ def train_improved_elasticnet_model(df, split_type='random', use_feature_selecti
         y_train = y.loc[train_idx]
         X_test = X.loc[test_idx]
         y_test = y.loc[test_idx]
-        model.fit(X_train, y_train)
+        model_pipeline.fit(X_train, y_train)
 
     else:
         raise ValueError("Invalid split_type. Choose from 'random', 'by_state', or 'time'.")
 
+    # Store the final processed data for return
+    X_train_final = X_train.copy()
+    X_test_final = X_test.copy()
+
     # === Evaluation ===
-    y_pred = model.predict(X_test)
+    y_pred = model_pipeline.predict(X_test)
     rmse = mean_squared_error(y_test, y_pred, squared=False)
     r2 = r2_score(y_test, y_pred)
 
@@ -153,9 +157,9 @@ def train_improved_elasticnet_model(df, split_type='random', use_feature_selecti
     print(f"📈 RMSE: {rmse:.2f} (Baseline: {baseline_rmse:.2f})")
     print(f"📊 R² Score: {r2:.4f} (Baseline: {baseline_r2:.4f})")
 
-    if hasattr(model.named_steps['regressor'], 'alpha_'):
-        print(f"🎯 Selected ElasticNet alpha: {model.named_steps['regressor'].alpha_:.6f}")
-        print(f"🔗 Selected l1_ratio: {model.named_steps['regressor'].l1_ratio_:.2f}")
+    if hasattr(model_pipeline.named_steps['regressor'], 'alpha_'):
+        print(f"🎯 Selected ElasticNet alpha: {model_pipeline.named_steps['regressor'].alpha_:.6f}")
+        print(f"🔗 Selected l1_ratio: {model_pipeline.named_steps['regressor'].l1_ratio_:.2f}")
 
     # === Cross-validation ===
     print("⏳ Performing cross-validation...")
@@ -169,11 +173,11 @@ def train_improved_elasticnet_model(df, split_type='random', use_feature_selecti
         cv = 10
         groups = None
 
-    scores = cross_val_score(model, X, y, cv=cv, scoring='r2', groups=groups)
+    scores = cross_val_score(model_pipeline, X, y, cv=cv, scoring='r2', groups=groups)
     print(f"✅ Cross-validated R²: Mean = {scores.mean():.4f}, Std = {scores.std():.4f}")
 
     # Overfitting check
-    train_score = model.score(X_train, y_train)
+    train_score = model_pipeline.score(X_train, y_train)
     overfitting_gap = train_score - r2
     print(f"🔍 Training R²: {train_score:.4f}")
     print(f"🔍 Test R²: {r2:.4f}")
@@ -182,7 +186,5 @@ def train_improved_elasticnet_model(df, split_type='random', use_feature_selecti
     if overfitting_gap > 0.1:
         print("🚨 Overfitting detected. Try more regularization or simpler features.")
 
-    return model
-
-
-
+    # Return also X_train and y_train after processing
+    return model_pipeline, X_train_final, X_test_final, y_train, y_test
