@@ -42,7 +42,7 @@ y = df['cum_positive_cases']
 # Optionally: use log1p target if your model uses it
 # y = np.log1p(y)
 
-X_selected, selected_features, scores_df = select_top_k_features(X_full, y, k=30, return_scores=True)
+X_selected, selected_features, scores_df = select_top_k_features(X_full, y, k=20, return_scores=True)
 print("📌 Top selected features:")
 print(selected_features)
 
@@ -56,7 +56,7 @@ df_selected['dates'] = df['dates']
 # === Step 5: Train Models ===
 print("\nStep 5: Training models...")
 from Code.model_train import train_improved_elasticnet_model
-model = train_improved_elasticnet_model(df_selected, split_type='by_state')  # or 'random', 'time'
+model = train_improved_elasticnet_model(df_selected, split_type='by_state')
 
 # # === Step 6: Hyperparameter Tuning ===
 # print("\nStep 6: Hyperparameter tuning...")
