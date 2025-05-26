@@ -20,7 +20,7 @@ def clean_data(df = pd.DataFrame) -> pd.DataFrame:
     if os.path.exists(cleaned_data_path):
         print(f"Cleaned data already exists at {cleaned_data_path}. Loading it.")
         return pd.read_csv(cleaned_data_path)
-
+    
     # For Kerala state, go over the rows and make the cum_positive_cases monotonically increasing
     kerala_df = df[df["state"] == "Kerala"].copy()
     kerala_df["cum_positive_cases"] = kerala_df["cum_positive_cases"].cummax()
@@ -37,7 +37,9 @@ def clean_data(df = pd.DataFrame) -> pd.DataFrame:
             # Get the range of indices to consider
             start_idx = max(idx - 2, state_df.index.min())
             end_idx = min(idx + 3, state_df.index.max() + 1)
-            mean_value = state_df.loc[start_idx:end_idx, "daily_positive_cases"].mean()
+            window_indices = list(range(start_idx, idx)) + list(range(idx + 1, end_idx))
+            # Calculate the mean excluding the negative value itself
+            mean_value = state_df.loc[window_indices, "daily_positive_cases"].mean()
             df.at[idx, "daily_positive_cases"] = mean_value
 
         # Recalculate cum_positive_cases for the state
@@ -51,6 +53,14 @@ def clean_data(df = pd.DataFrame) -> pd.DataFrame:
         "daily_recovered", "cum_deceased", "daily_deceased", "daily_positivity_rate"
     ]
     df.drop(columns=columns_to_drop, inplace=True)
+
+        # for each state create a lag feature for cum_positive_cases and remove the last row
+    # call the column "target"
+    for state in df["state"].unique():
+        state_mask = df["state"] == state
+        df.loc[state_mask, "target"] = df.loc[state_mask, "cum_positive_cases"].shift(-1)
+    df.dropna(subset=["target"], inplace=True)
+    df.reset_index(drop=True, inplace=True)
 
     # Save the cleaned data
     df.to_csv(cleaned_data_path, index=False)

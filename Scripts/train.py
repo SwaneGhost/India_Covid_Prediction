@@ -1,4 +1,4 @@
-from sklearn.metrics import root_mean_squared_error
+from sklearn.metrics import root_mean_squared_error, mean_absolute_error, r2_score
 import yaml
 import os
 import pandas as pd
@@ -12,8 +12,9 @@ def train_eval():
     """
     Train and evaluate the model.
     """
+
     # Load configuration parameters
-    config = load_config()
+    config = load_config() 
 
     # Check if the output directory exists, if not create it
     if not os.path.exists(config["output_dir"]):
@@ -31,18 +32,28 @@ def train_eval():
     
     # Load the dataset
     df = pd.read_csv(config["data_path"])
+
+    # remove "Maharashtra" states from the dataset
+    df = df[~df["state"].isin(["Maharashtra"])]
+    # Reset index after filtering
+    df.reset_index(drop=True, inplace=True)
+
     
     # Set seed for reproducibility
     np.random.seed(config["seed"])
 
-    X = df.drop(columns=["target"])
+    X = df.drop(columns=["target", "state", "dates"])
     y = df["target"]
     groups = df["state"]
 
     outer_cv = GroupKFold(n_splits=5)
     best_params_list = []
-    best_params_train = []
-    best_params_test = []
+    best_params_train_rmse = []
+    best_params_test_rmse = []
+    best_params_train_mae = []
+    best_params_test_mae = []
+    best_params_train_r2 = []
+    best_params_test_r2 = []
 
     # Outer cross-validation loop
     for train_idx, test_idx in outer_cv.split(X, y, groups):
@@ -57,12 +68,12 @@ def train_eval():
         def objective(trial):
             # TODO - revise hyperparameter search space
             params = {
-                "max_depth": trial.suggest_int("max_depth", 3, 10),
+                "max_depth": trial.suggest_int("max_depth", 1, 5),
                 "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3),
-                "n_estimators": trial.suggest_int("n_estimators", 50, 300),
+                "n_estimators": trial.suggest_int("n_estimators", 10, 2000),
                 "subsample": trial.suggest_float("subsample", 0.5, 1.0),
                 "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
-                "random_state": config["seed"],
+                "random_state": config["seed"]
             }
             # Inner CV for hyperparameter tuning
             inner_cv = GroupKFold(n_splits=3)
@@ -74,6 +85,8 @@ def train_eval():
                 model = XGBRegressor(**params)
                 model.fit(X_inner_train, y_inner_train)
                 y_pred = model.predict(X_inner_val)
+
+                # Calculate RMSE
                 score = root_mean_squared_error(y_inner_val, y_pred)
                 scores.append(score)
             return np.mean(scores)  # Optuna minimizes RMSE
@@ -95,13 +108,25 @@ def train_eval():
         train_rmse = root_mean_squared_error(y_train, y_train_pred)
         test_rmse = root_mean_squared_error(y_test, y_test_pred)
 
+        # Calculate MAE
+        train_mae = mean_absolute_error(y_train, y_train_pred)
+        test_mae = mean_absolute_error(y_test, y_test_pred)
+
+        # Calculate R^2
+        train_r2 = r2_score(y_train, y_train_pred)
+        test_r2 = r2_score(y_test, y_test_pred)
+
         # Store the results
-        best_params_train.append(train_rmse)
-        best_params_test.append(test_rmse)
+        best_params_train_rmse.append(train_rmse)
+        best_params_test_rmse.append(test_rmse)
+        best_params_train_mae.append(train_mae)
+        best_params_test_mae.append(test_mae)
+        best_params_train_r2.append(train_r2)
+        best_params_test_r2.append(test_r2)
         best_params_list.append(study.best_params)
 
     # Find the index of the median RMSE for the test set
-    median_index = np.argsort(best_params_test)[len(best_params_test) // 2]
+    median_index = np.argsort(best_params_test_rmse)[len(best_params_test_rmse) // 2]
     median_params = best_params_list[median_index]
 
     print("Median hyperparameters across all folds:", median_params)
@@ -109,8 +134,12 @@ def train_eval():
     # Save the loss values and hyperparameters
     results_df = pd.DataFrame({
         "fold": range(1, len(best_params_list) + 1),
-        "train_rmse": best_params_train,
-        "test_rmse": best_params_test
+        "train_rmse": best_params_train_rmse,
+        "test_rmse": best_params_test_rmse,
+        "train_mae": best_params_train_mae,
+        "test_mae": best_params_test_mae,
+        "train_r2": best_params_train_r2,
+        "test_r2": best_params_test_r2
     })
     results_df.to_csv(os.path.join(run_folder, "results.csv"), index=False)
 
@@ -132,8 +161,8 @@ def load_config() -> dict:
         FileNotFoundError: If the config file does not exist.
         KeyError: If any required key is missing.
     """
-    path = "Config/config.yaml"
-
+    path = os.path.join("Config", "configs.yaml")
+    
     required_keys = ["data_path"]
 
     # Check if the path exists
@@ -151,6 +180,6 @@ def load_config() -> dict:
     # Set default values for optional keys
     config.setdefault("output_dir", "Runs/")
     config.setdefault("seed", 42)
-    config.setdefault("n_trials", 100)
+    config.setdefault("n_trials", 500)
 
     return config
