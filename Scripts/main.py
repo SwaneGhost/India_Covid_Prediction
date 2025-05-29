@@ -91,7 +91,7 @@ joblib.dump(model, 'trained_elasticnet_model.joblib')
 # step 8: Summary
 print("\n Step 8: Demo")
 from notebooks.Demo import Demo
-Demo()
+Demo(model, df_selected)
 
 
 # # Step 8: Generate summary
