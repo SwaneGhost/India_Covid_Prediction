@@ -12,7 +12,6 @@ def train_eval():
     """
     Train and evaluate the model.
     """
-
     # Load configuration parameters
     config = load_config() 
 
@@ -60,7 +59,6 @@ def train_eval():
         groups_train = groups.iloc[train_idx]
 
         def objective(trial):
-            # TODO - revise hyperparameter search space
             params = {
                 "max_depth": trial.suggest_int("max_depth", 1, 5),
                 "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3),
@@ -149,6 +147,11 @@ def train_eval():
     median_params_path = os.path.join(run_folder, "median_params.yaml")
     with open(median_params_path, "w") as file:
         yaml.dump(median_params, file)
+        
+    # Update the config file with the run folder
+    config["last_run_folder"] = os.path.basename(run_folder)
+    with open(os.path.join("Config", "configs.yaml"), "w") as file:
+        yaml.dump(config, file)
 
     return median_params
 

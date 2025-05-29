@@ -2,3 +2,4 @@ data_path: Data/Train/train_data.csv
 n_trials: 500
 output_dir: Runs/
 seed: 42
+last_run: 'run_20250526_204409'

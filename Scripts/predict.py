@@ -1,6 +1,8 @@
 import pandas as pd
 import os
 import matplotlib.pyplot as plt
+import yaml
+
 from xgboost import XGBRegressor
 from sklearn.model_selection import GroupKFold
 
@@ -10,21 +12,27 @@ def predict():
     across all folds.
     """
 
-    median_params = {
-        'colsample_bytree': 0.895100074311251,
-        'learning_rate': 0.2702113506729492,
-        'max_depth': 2,
-        'n_estimators': 131,
-        'reg_alpha': 0.3059470293939967,
-        'reg_lambda': 0.8402106219103826,
-        'subsample': 0.9903791207778909,
-    }
+    # load config file
+    config_path = os.path.join("Configs", "config.yaml")
+    if not os.path.exists(config_path):
+        raise FileNotFoundError(f"Config file not found at {config_path}")
+    
+    with open(config_path, 'r') as file:
+        config = yaml.safe_load(file)
+        
+    last_run_folder = os.path.join(config["output_dir"], config["last_run_folder"])
+    
+    # read the median hyperparameters from the YAML file
+    median_params_path = os.path.join(last_run_folder, "median_params.yaml")
+    
+    if not os.path.exists(median_params_path):
+        raise FileNotFoundError(f"Median parameters file not found at {median_params_path}")
+    
+    with open(median_params_path, 'r') as file:
+        median_params = yaml.safe_load(file)
 
     # Load the data
-    df = pd.read_csv(os.path.join("Data", "Train", "train_data.csv"))
-
-    # Remove "Maharashtra" states from the dataset
-    df = df[~df["state"].isin(["Maharashtra"])]
+    df = pd.read_csv(config["data_path"])
 
     # Reset index after filtering
     df.reset_index(drop=True, inplace=True)
@@ -47,7 +55,7 @@ def predict():
     for train_idx, test_idx in outer_cv.split(X, y, groups):
         # Split the data
         X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
-        y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+        y_train, _ = y.iloc[train_idx], y.iloc[test_idx]
 
         # Fit the model
         model.fit(X_train, y_train)
