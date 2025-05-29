@@ -57,6 +57,23 @@ df_selected['dates'] = df['dates']
 print("\nStep 5: Training models...")
 from Code.model_train import train_improved_elasticnet_model
 model, X_train_final, X_test_final, y_train, y_test = train_improved_elasticnet_model(df_selected, split_type='by_state')
+# === Print selected feature names used in the final model ===
+preprocessor = model.named_steps['preprocessor']
+selector = model.named_steps['feature_selection']
+
+# Step 1: Get all feature names after preprocessing
+all_feature_names = preprocessor.get_feature_names_out()
+
+# Step 2: Get mask of selected features from SelectKBest
+selected_mask = selector.get_support()
+
+# Step 3: Apply mask to get selected feature names
+selected_feature_names = all_feature_names[selected_mask]
+
+# Step 4: Print them
+print("\n✅ Final features selected by the model:")
+for i, f in enumerate(selected_feature_names, 1):
+    print(f"{i}. {f}")
 
 import joblib
 joblib.dump(model, 'trained_elasticnet_model.joblib')
@@ -81,31 +98,20 @@ joblib.dump(model, 'trained_elasticnet_model.joblib')
 #
 #
 #
-# # === Step 7: SHAP Analysis ===
-# print("\nStep 7: Running SHAP feature importance analysis...")
-# from notebooks.shap_analysis import run_shap_analysis
-#
-# # Use same training data used in model training (not split)
-# shap_values, explainer = run_shap_analysis(model, X_train_final,X_test_final)
+# === Step 7: SHAP Analysis ===
+from notebooks.shap_analysis import run_shap_analysis
 
-# step 8: Summary
-print("\n Step 8: Demo")
-from notebooks.Demo import Demo
-Demo(model, df_selected)
+demo_features = [
+    'population', 'GDP', 'area', 'density',
+    'Hindu', 'Muslim', 'Christian', 'Sikhs', 'Buddhist', 'Others',
+    'primary_health_centers', 'community_health_centers', 'sub_district_hospitals',
+    'district_hospitals', 'public_health_facilities', 'public_beds',
+    'urban_hospitals', 'urban_beds', 'rural_hospitals', 'rural_beds',
+    'Male literacy rate %', 'Female literacy rate %', 'Average literacy rate %',
+    'Female to Male ratio', 'per capita in'
+]
 
-
-# # Step 8: Generate summary
-# print("\nStep 8: Generating summary...")
-# from results.Summary import generate_summary
-# generate_summary(
-#     best_model_name, best_model,
-#     model_results={},  # or pass your earlier results if needed
-#     tuning_results=tuning_results,
-#     X_train=X_train,
-#     preprocessor=None,  # or the one used, if needed
-#     categorical_features=categorical_features,
-#     numerical_features=numerical_features
-# )
+shap_values, explainer = run_shap_analysis(model, X_train_final, demo_features)
 
 
 print("\nAnalysis complete! Check the results directory for outputs.")
