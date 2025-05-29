@@ -4,10 +4,12 @@ This script coordinates the flow between different modules:
 1. Data merging and cleaning
 2. Exploratory Data Analysis
 3. Feature Engineering
-4. Model Training
-5. Hyperparameter Tuning
-6. Model Evaluation and Feature Importance
-7. Summary and Results
+4. Remove Highly Correlated Features  <-- ADDED THIS STEP
+5. Feature Selection
+6. Model Training
+7. Hyperparameter Tuning
+8. Model Evaluation and Feature Importance
+9. Summary and Results
 
 Usage:
     python main.py
@@ -22,17 +24,22 @@ from Code.enhanced_data import enhanced_data
 df = enhanced_data()
 
 # === Step 2: (Optional EDA) ===
-# print("\nStep 2: Performing Exploratory Data Analysis...")
-# from notebooks.EDA import perform_eda
-# perform_eda(df)
+print("\nStep 2: Performing Exploratory Data Analysis...")
+from notebooks.EDA import eda
+eda(df)
 
 # === Step 3: Engineer features ===
 print("\nStep 3: Engineering features...")
 from Code.feature_engineering import improved_feature_engineering
 df = improved_feature_engineering(df)
 
-# === Step 4: Feature Selection ===
-print("\nStep 4: Selecting top features...")
+# === Step 4: Remove highly correlated features BEFORE feature selection ===
+print("\nStep 4: Removing highly correlated features...")
+from Code.feature_engineering import remove_highly_correlated_features
+df = remove_highly_correlated_features(df, target_col='cum_positive_cases')
+
+# === Step 5: Feature Selection ===
+print("\nStep 5: Selecting top features...")
 from Code.feature_selection import select_top_k_features
 
 # Prepare data for selection
@@ -53,10 +60,11 @@ df_selected['cum_positive_cases'] = y
 df_selected['date'] = df['date']
 df_selected['dates'] = df['dates']
 
-# === Step 5: Train Models ===
-print("\nStep 5: Training models...")
+# === Step 6: Train Models ===
+print("\nStep 6: Training models...")
 from Code.model_train import train_improved_elasticnet_model
 model, X_train_final, X_test_final, y_train, y_test = train_improved_elasticnet_model(df_selected, split_type='by_state')
+
 # === Print selected feature names used in the final model ===
 preprocessor = model.named_steps['preprocessor']
 selector = model.named_steps['feature_selection']
@@ -78,8 +86,8 @@ for i, f in enumerate(selected_feature_names, 1):
 import joblib
 joblib.dump(model, 'trained_elasticnet_model.joblib')
 
-# # === Step 6: Hyperparameter Tuning ===
-# print("\nStep 6: Hyperparameter tuning...")
+# # === Step 7: Hyperparameter Tuning ===
+# print("\nStep 7: Hyperparameter tuning...")
 # from Code.HyperTuning import tune_elasticnet_model
 #
 # categorical_features = ['state']
@@ -88,17 +96,7 @@ joblib.dump(model, 'trained_elasticnet_model.joblib')
 # # Tune on same selected feature set
 # best_model = tune_elasticnet_model(X_selected, y, categorical_features, numerical_features)
 
-
-#
-# # Step 6: Analyze feature importance
-# print("\nStep 6: Analyzing feature importance...")
-# from notebooks.feature_importance import run_feature_importance
-#
-# importance_results = run_feature_importance(model, X_train_final, X_test_final, y_train, y_test)
-#
-#
-#
-# === Step 7: SHAP Analysis ===
+# === Step 8: SHAP Analysis ===
 from notebooks.shap_analysis import run_shap_analysis
 
 demo_features = [
@@ -112,6 +110,5 @@ demo_features = [
 ]
 
 shap_values, explainer = run_shap_analysis(model, X_train_final, demo_features)
-
 
 print("\nAnalysis complete! Check the results directory for outputs.")

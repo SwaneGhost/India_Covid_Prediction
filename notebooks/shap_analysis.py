@@ -3,8 +3,21 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
+
 def run_shap_analysis(model, X_raw, demo_features=None, max_display=15):
-    print("🔍 Running Enhanced SHAP analysis for model interpretability...")
+    """
+    Run SHAP analysis to interpret model predictions.
+
+    Parameters:
+        model: Trained sklearn pipeline with steps: preprocessor, feature_selection, regressor
+        X_raw (pd.DataFrame): Raw input features before transformation
+        demo_features (list): List of demographic/socioeconomic feature keywords to track
+        max_display (int): Number of top features to display in global SHAP summary
+
+    Returns:
+        shap_values, explainer
+    """
+    print("Running SHAP analysis...")
     print("=" * 60)
 
     try:
@@ -12,55 +25,52 @@ def run_shap_analysis(model, X_raw, demo_features=None, max_display=15):
         selector = model.named_steps['feature_selection']
         regressor = model.named_steps['regressor']
 
-        # === Step 1: Preprocess raw data ===
+        # Step 1: Apply preprocessing
         X_preprocessed = preprocessor.transform(X_raw)
 
-        # === Step 2: Apply feature selection ===
+        # Step 2: Feature selection
         X_selected = selector.transform(X_preprocessed)
 
-        # Get actual feature names
+        # Step 3: Get feature names after preprocessing and selection
         all_feature_names = preprocessor.get_feature_names_out()
         selected_mask = selector.get_support()
         selected_feature_names = all_feature_names[selected_mask]
 
-        # === Step 3: SHAP explainer ===
+        # Step 4: Run SHAP Explainer
         explainer = shap.Explainer(regressor.predict, X_selected)
         shap_values = explainer(X_selected)
 
-        # === Step 4: Global top features ===
-        print(f"\n📊 Top {max_display} Features by SHAP Value (Overall):")
+        # Step 5: Global feature importance
+        print(f"\nTop {max_display} features by SHAP value:")
         shap.plots.bar(shap_values, max_display=max_display, show=True)
 
-        # === Step 5: Focus on Demographic/Socioeconomic ===
+        # Step 6: Focus on demographic/socioeconomic features
         if demo_features:
-            # Build SHAP summary table
             df_summary = pd.DataFrame({
                 'feature': selected_feature_names,
                 'mean_abs_shap': np.abs(shap_values.values).mean(axis=0)
             })
 
-            # Match all socioeconomic/demographic features, even with 0 impact
+            # Filter features that match any of the demographic keywords
             demo_mask = df_summary['feature'].str.contains('|'.join(demo_features))
             df_demo = df_summary[demo_mask].copy()
-
-            # Sort for clarity (optional)
             df_demo = df_demo.sort_values('mean_abs_shap', ascending=False)
 
-            # Print full list
-            print("\n🏛 SHAP Contributions of ALL Socioeconomic & Demographic Features:")
-            pd.set_option("display.max_rows", None)  # Ensure full list is shown
+            # Print summary
+            print("\nSHAP values for selected demographic/socioeconomic features:")
+            pd.set_option("display.max_rows", None)
             print(df_demo.to_string(index=False))
 
-            # Plot all
+            # Plot selected features
             plt.figure(figsize=(10, max(6, 0.4 * len(df_demo))))
-            plt.barh(df_demo['feature'], df_demo['mean_abs_shap'], color='cornflowerblue')
-            plt.title('SHAP Impact: All Socioeconomic & Demographic Features')
-            plt.xlabel('Mean |SHAP Value|')
+            plt.barh(df_demo['feature'], df_demo['mean_abs_shap'], color='steelblue')
+            plt.title('Mean SHAP Value - Demographic and Socioeconomic Features')
+            plt.xlabel('Mean Absolute SHAP Value')
             plt.tight_layout()
             plt.show()
 
         return shap_values, explainer
 
     except Exception as e:
-        print(f"❌ SHAP analysis failed: {e}")
+        print(f"SHAP analysis failed: {e}")
         return None, None

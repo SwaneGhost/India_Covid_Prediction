@@ -1,5 +1,6 @@
 """
-Module for training machine learning models on the COVID-19 dataset.
+Module for training ElasticNet models on the COVID-19 dataset.
+Includes data splitting, preprocessing, optional feature selection, and model evaluation.
 """
 
 import numpy as np
@@ -9,55 +10,53 @@ from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder, RobustScaler
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import mean_squared_error, r2_score
+from sklearn.linear_model import ElasticNetCV
 
 
 def remove_highly_correlated_features(df, target_col='cum_positive_cases',
-                                       target_corr_threshold=0.93,
-                                       feature_corr_threshold=0.85):
+                                      target_corr_threshold=0.93,
+                                      feature_corr_threshold=0.85):
+    """
+    Removes features highly correlated with the target or with each other.
+    """
     df_clean = df.copy()
-
-    # Remove identifiers
     drop_cols = ['dates', 'date']
-    df_features = df_clean.drop(columns=drop_cols)
+    df_features = df_clean.drop(columns=drop_cols, errors='ignore')
 
-    # Keep only numeric features for correlation
     numeric_df = df_features.select_dtypes(include=[np.number])
 
-    # 1. Correlation with target
     corr_with_target = numeric_df.corr()[target_col].drop(target_col)
     to_drop_target = corr_with_target[abs(corr_with_target) > target_corr_threshold].index.tolist()
-
-    print(f"📉 Features too correlated with target (> {target_corr_threshold}):")
-    print(to_drop_target)
-
+    print(f"Removing features highly correlated with the target (> {target_corr_threshold}): {to_drop_target}")
     df_clean.drop(columns=to_drop_target, inplace=True)
 
-    # 2. Correlation between features
     numeric_df = df_clean.select_dtypes(include=[np.number])
-    corr_matrix = numeric_df.drop(columns=[target_col]).corr().abs()
+    corr_matrix = numeric_df.drop(columns=[target_col], errors='ignore').corr().abs()
     upper_tri = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
-
-    to_drop_features = [column for column in upper_tri.columns if any(upper_tri[column] > feature_corr_threshold)]
-
-    print(f"🔁 Features highly correlated with others (> {feature_corr_threshold}):")
-    print(to_drop_features)
-
+    to_drop_features = [col for col in upper_tri.columns if any(upper_tri[col] > feature_corr_threshold)]
+    print(f"Removing features highly correlated with each other (> {feature_corr_threshold}): {to_drop_features}")
     df_clean.drop(columns=to_drop_features, inplace=True)
 
-    print(f"✅ Final shape after removing correlated features: {df_clean.shape}")
-
+    print(f"Final shape after removing correlated features: {df_clean.shape}")
     return df_clean
 
 
-from sklearn.linear_model import ElasticNetCV
-
 def train_improved_elasticnet_model(df, split_type='random', use_feature_selection=True):
-    """Improved ElasticNet model with feature cleaning and conservative engineering"""
+    """
+    Trains an ElasticNetCV model with preprocessing and optional feature selection.
 
-    df = remove_highly_correlated_features(df)
-    print(f"🔧 Splitting type: {split_type}")
+    Parameters:
+        df (pd.DataFrame): The input DataFrame.
+        split_type (str): One of 'random', 'by_state', or 'time'.
+        use_feature_selection (bool): Whether to include SelectKBest before regression.
 
-    # Define target and features
+    Returns:
+        model_pipeline: Trained scikit-learn pipeline.
+        X_train_final, X_test_final: Feature sets.
+        y_train, y_test: Targets.
+    """
+    print(f"Splitting method: {split_type}")
+
     target = 'cum_positive_cases'
     id_cols = ['dates', 'date']
     existing_id_cols = [col for col in id_cols if col in df.columns]
@@ -67,7 +66,6 @@ def train_improved_elasticnet_model(df, split_type='random', use_feature_selecti
     categorical_features = ['state'] if 'state' in X.columns else []
     numerical_features = X.select_dtypes(include=['float64', 'int64']).columns.difference(categorical_features).tolist()
 
-    # Preprocessing
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', Pipeline([
@@ -83,12 +81,10 @@ def train_improved_elasticnet_model(df, split_type='random', use_feature_selecti
         ]
     )
 
-    # Feature selection + ElasticNetCV
     if use_feature_selection:
         from sklearn.feature_selection import SelectKBest, f_regression
         feature_selector = SelectKBest(score_func=f_regression, k=min(20, len(numerical_features)))
-
-        model_pipeline = Pipeline(steps=[
+        model_pipeline = Pipeline([
             ('preprocessor', preprocessor),
             ('feature_selection', feature_selector),
             ('regressor', ElasticNetCV(
@@ -100,7 +96,7 @@ def train_improved_elasticnet_model(df, split_type='random', use_feature_selecti
             ))
         ])
     else:
-        model_pipeline = Pipeline(steps=[
+        model_pipeline = Pipeline([
             ('preprocessor', preprocessor),
             ('regressor', ElasticNetCV(
                 l1_ratio=[.1, .3, .5, .7, .9, .95, .99, 1],
@@ -111,22 +107,17 @@ def train_improved_elasticnet_model(df, split_type='random', use_feature_selecti
             ))
         ])
 
-    # === Splitting ===
     if split_type == 'random':
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        model_pipeline.fit(X_train, y_train)
-
     elif split_type == 'by_state':
-        unique_states = df['state'].unique()
+        states = df['state'].unique()
         np.random.seed(42)
-        np.random.shuffle(unique_states)
-        train_states = unique_states[:int(0.8 * len(unique_states))]
+        np.random.shuffle(states)
+        train_states = states[:int(0.8 * len(states))]
         X_train = X[df['state'].isin(train_states)]
         y_train = y[df['state'].isin(train_states)]
         X_test = X[~df['state'].isin(train_states)]
         y_test = y[~df['state'].isin(train_states)]
-        model_pipeline.fit(X_train, y_train)
-
     elif split_type == 'time':
         df_sorted = df.sort_values(by='date' if 'date' in df.columns else df.index)
         split_index = int(0.8 * len(df_sorted))
@@ -136,16 +127,11 @@ def train_improved_elasticnet_model(df, split_type='random', use_feature_selecti
         y_train = y.loc[train_idx]
         X_test = X.loc[test_idx]
         y_test = y.loc[test_idx]
-        model_pipeline.fit(X_train, y_train)
-
     else:
-        raise ValueError("Invalid split_type. Choose from 'random', 'by_state', or 'time'.")
+        raise ValueError("split_type must be one of: 'random', 'by_state', 'time'")
 
-    # Store the final processed data for return
-    X_train_final = X_train.copy()
-    X_test_final = X_test.copy()
+    model_pipeline.fit(X_train, y_train)
 
-    # === Evaluation ===
     y_pred = model_pipeline.predict(X_test)
     rmse = mean_squared_error(y_test, y_pred, squared=False)
     r2 = r2_score(y_test, y_pred)
@@ -154,15 +140,14 @@ def train_improved_elasticnet_model(df, split_type='random', use_feature_selecti
     baseline_rmse = mean_squared_error(y_test, baseline_pred, squared=False)
     baseline_r2 = r2_score(y_test, baseline_pred)
 
-    print(f"📈 RMSE: {rmse:.2f} (Baseline: {baseline_rmse:.2f})")
-    print(f"📊 R² Score: {r2:.4f} (Baseline: {baseline_r2:.4f})")
+    print(f"Test RMSE: {rmse:.2f} (Baseline: {baseline_rmse:.2f})")
+    print(f"Test R²: {r2:.4f} (Baseline: {baseline_r2:.4f})")
 
     if hasattr(model_pipeline.named_steps['regressor'], 'alpha_'):
-        print(f"🎯 Selected ElasticNet alpha: {model_pipeline.named_steps['regressor'].alpha_:.6f}")
-        print(f"🔗 Selected l1_ratio: {model_pipeline.named_steps['regressor'].l1_ratio_:.2f}")
+        print(f"Selected alpha: {model_pipeline.named_steps['regressor'].alpha_:.6f}")
+        print(f"Selected l1_ratio: {model_pipeline.named_steps['regressor'].l1_ratio_:.2f}")
 
-    # === Cross-validation ===
-    print("⏳ Performing cross-validation...")
+    print("Running cross-validation...")
     if split_type == 'by_state':
         cv = GroupKFold(n_splits=5)
         groups = X['state']
@@ -174,17 +159,14 @@ def train_improved_elasticnet_model(df, split_type='random', use_feature_selecti
         groups = None
 
     scores = cross_val_score(model_pipeline, X, y, cv=cv, scoring='r2', groups=groups)
-    print(f"✅ Cross-validated R²: Mean = {scores.mean():.4f}, Std = {scores.std():.4f}")
+    print(f"Cross-validated R²: mean = {scores.mean():.4f}, std = {scores.std():.4f}")
 
-    # Overfitting check
     train_score = model_pipeline.score(X_train, y_train)
     overfitting_gap = train_score - r2
-    print(f"🔍 Training R²: {train_score:.4f}")
-    print(f"🔍 Test R²: {r2:.4f}")
-    print(f"⚠ Overfitting gap: {overfitting_gap:.4f}")
+    print(f"Train R²: {train_score:.4f}")
+    print(f"Overfitting gap: {overfitting_gap:.4f}")
 
     if overfitting_gap > 0.1:
-        print("🚨 Overfitting detected. Try more regularization or simpler features.")
+        print("Model may be overfitting. Consider stronger regularization or simpler features.")
 
-    # Return also X_train and y_train after processing
-    return model_pipeline, X_train_final, X_test_final, y_train, y_test
+    return model_pipeline, X_train.copy(), X_test.copy(), y_train, y_test
