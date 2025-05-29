@@ -1,104 +1,53 @@
 """
-Main script to run the COVID-19 prediction model for India.
-This script coordinates the flow between different modules:
-1. Data merging and cleaning
-2. Exploratory Data Analysis
-3. Feature Engineering
-4. Remove Highly Correlated Features  <-- ADDED THIS STEP
-5. Feature Selection
-6. Model Training
-7. Hyperparameter Tuning
-8. Model Evaluation and Feature Importance
-9. Summary and Results
-
-Usage:
-    python main.py
+Main script for COVID-19 prediction using ElasticNet.
 """
 
 import pandas as pd
 import numpy as np
-
-# === Step 1: Merge and prepare data ===
-print("Step 1: Merging and preparing data...")
-from Code.enhanced_data import enhanced_data
-df = enhanced_data()
-
-# === Step 2: (Optional EDA) ===
-print("\nStep 2: Performing Exploratory Data Analysis...")
+from Code.pipeline_utils import prepare_training_data, print_selected_features, save_model
 from notebooks.EDA import eda
-eda(df)
-
-# === Step 3: Engineer features ===
-print("\nStep 3: Engineering features...")
-from Code.feature_engineering import improved_feature_engineering
-df = improved_feature_engineering(df)
-
-# === Step 4: Remove highly correlated features BEFORE feature selection ===
-print("\nStep 4: Removing highly correlated features...")
-from Code.feature_engineering import remove_highly_correlated_features
-df = remove_highly_correlated_features(df, target_col='cum_positive_cases')
-
-# === Step 5: Feature Selection ===
-print("\nStep 5: Selecting top features...")
-from Code.feature_selection import select_top_k_features
-
-# Prepare data for selection
-X_full = df.drop(columns=['cum_positive_cases', 'date', 'dates'])
-y = df['cum_positive_cases']
-
-# Optionally: use log1p target if your model uses it
-# y = np.log1p(y)
-
-X_selected, selected_features, scores_df = select_top_k_features(X_full, y, k=20, return_scores=True)
-print("📌 Top selected features:")
-print(selected_features)
-
-# Add back selected features + categorical (e.g., 'state') for training
-X_selected['state'] = df['state']  # If using 'state' in training
-df_selected = X_selected.copy()
-df_selected['cum_positive_cases'] = y
-df_selected['date'] = df['date']
-df_selected['dates'] = df['dates']
-
-# === Step 6: Train Models ===
-print("\nStep 6: Training models...")
+from Code.enhanced_data import enhanced_data
 from Code.model_train import train_improved_elasticnet_model
-model, X_train_final, X_test_final, y_train, y_test = train_improved_elasticnet_model(df_selected, split_type='by_state')
-
-# === Print selected feature names used in the final model ===
-preprocessor = model.named_steps['preprocessor']
-selector = model.named_steps['feature_selection']
-
-# Step 1: Get all feature names after preprocessing
-all_feature_names = preprocessor.get_feature_names_out()
-
-# Step 2: Get mask of selected features from SelectKBest
-selected_mask = selector.get_support()
-
-# Step 3: Apply mask to get selected feature names
-selected_feature_names = all_feature_names[selected_mask]
-
-# Step 4: Print them
-print("\n✅ Final features selected by the model:")
-for i, f in enumerate(selected_feature_names, 1):
-    print(f"{i}. {f}")
-
-import joblib
-joblib.dump(model, 'trained_elasticnet_model.joblib')
-
-# # === Step 7: Hyperparameter Tuning ===
-# print("\nStep 7: Hyperparameter tuning...")
-# from Code.HyperTuning import tune_elasticnet_model
-#
-# categorical_features = ['state']
-# numerical_features = X_selected.select_dtypes(include=['float64', 'int64']).columns.difference(categorical_features).tolist()
-#
-# # Tune on same selected feature set
-# best_model = tune_elasticnet_model(X_selected, y, categorical_features, numerical_features)
-
-# === Step 8: SHAP Analysis ===
 from notebooks.shap_analysis import run_shap_analysis
 
+# Step 1: Data Preparation
+print("Step 1: Loading and preparing data...")
+df = enhanced_data()
+
+# Step 2: Exploratory Data Analysis
+print("\nStep 2: Exploratory Data Analysis...")
+eda(df)
+
+# Step 3–5: Feature Engineering, Correlation Filtering, Feature Selection
+print("\nStep 3–5: Preparing training features...")
+X_selected, y, df_selected = prepare_training_data(df, target_col='cum_positive_cases', k=20)
+
+# y_log = np.log1p(y)
+
+
+# Step 6: Model Training
+print("\nStep 6: Training ElasticNet model...")
+model, X_train_final, X_test_final, y_train, y_test = train_improved_elasticnet_model(df_selected, split_type='by_state')
+
+# === Step 7: Hyperparameter Tuning ===
+print("\nStep 7: Hyperparameter tuning...")
+from Code.HyperTuning import tune_elasticnet_model
+
+categorical_features = ['state']
+numerical_features = X_selected.select_dtypes(include=['float64', 'int64']).columns.difference(categorical_features).tolist()
+
+# Run Optuna-based tuning
+best_model = tune_elasticnet_model(X_selected, y, categorical_features, numerical_features, n_trials=50)
+
+
+
+# Step 7: Print final feature names
+print_selected_features(model)
+
+# Step 8: Save trained model
+save_model(model, "trained_elasticnet_model.joblib")
+
+# Step 9: SHAP Analysis
 demo_features = [
     'population', 'GDP', 'area', 'density',
     'Hindu', 'Muslim', 'Christian', 'Sikhs', 'Buddhist', 'Others',
@@ -108,7 +57,6 @@ demo_features = [
     'Male literacy rate %', 'Female literacy rate %', 'Average literacy rate %',
     'Female to Male ratio', 'per capita in'
 ]
+run_shap_analysis(model, X_train_final, demo_features)
 
-shap_values, explainer = run_shap_analysis(model, X_train_final, demo_features)
-
-print("\nAnalysis complete! Check the results directory for outputs.")
+print("\nAnalysis complete.")
