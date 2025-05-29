@@ -61,6 +61,11 @@ def clean_data(df = pd.DataFrame) -> pd.DataFrame:
         df.loc[state_mask, "target"] = df.loc[state_mask, "cum_positive_cases"].shift(-1)
     df.dropna(subset=["target"], inplace=True)
     df.reset_index(drop=True, inplace=True)
+    
+    # remove "Maharashtra" states from the dataset
+    df = df[~df["state"].isin(["Maharashtra"])]
+    # Reset index after filtering
+    df.reset_index(drop=True, inplace=True)
 
     # Save the cleaned data
     df.to_csv(cleaned_data_path, index=False)

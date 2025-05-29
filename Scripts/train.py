@@ -32,13 +32,7 @@ def train_eval():
     
     # Load the dataset
     df = pd.read_csv(config["data_path"])
-
-    # remove "Maharashtra" states from the dataset
-    df = df[~df["state"].isin(["Maharashtra"])]
-    # Reset index after filtering
-    df.reset_index(drop=True, inplace=True)
-
-    
+ 
     # Set seed for reproducibility
     np.random.seed(config["seed"])
 
