@@ -16,18 +16,41 @@ df = enhanced_data()
 
 # Step 2: Exploratory Data Analysis
 print("\nStep 2: Exploratory Data Analysis...")
-eda(df)
+# eda(df)
 
 # Step 3–5: Feature Engineering, Correlation Filtering, Feature Selection
 print("\nStep 3–5: Preparing training features...")
-X_selected, y, df_selected = prepare_training_data(df, target_col='cum_positive_cases', k=20)
+X_selected, y_raw, df_selected = prepare_training_data(df, target_col='cum_positive_cases', k=20)
+y = np.log1p(y_raw)  # Log-transform the target
 
-# y_log = np.log1p(y)
 
 
 # Step 6: Model Training
 print("\nStep 6: Training ElasticNet model...")
-model, X_train_final, X_test_final, y_train, y_test = train_improved_elasticnet_model(df_selected, split_type='by_state')
+model, X_train_final, X_test_final, y_train_log, y_test_log = train_improved_elasticnet_model(
+    df_selected,
+    split_type='by_state',
+    custom_target=y  # This is the log-transformed target
+)
+
+from sklearn.metrics import mean_squared_error, r2_score
+
+print("\nEvaluating predictions on original scale...")
+
+# Predict on test set (log scale)
+y_pred_log = model.predict(X_test_final)
+
+# Inverse transform to original scale
+y_pred = np.expm1(y_pred_log)
+y_test_original = np.expm1(y_test_log)
+
+# Evaluate
+rmse = mean_squared_error(y_test_original, y_pred, squared=False)
+r2 = r2_score(y_test_original, y_pred)
+
+print(f"Test RMSE (original scale): {rmse:.2f}")
+print(f"Test R² (original scale): {r2:.4f}")
+
 
 # === Step 7: Hyperparameter Tuning ===
 print("\nStep 7: Hyperparameter tuning...")

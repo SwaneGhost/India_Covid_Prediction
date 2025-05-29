@@ -41,7 +41,7 @@ def remove_highly_correlated_features(df, target_col='cum_positive_cases',
     return df_clean
 
 
-def train_improved_elasticnet_model(df, split_type='random', use_feature_selection=True):
+def train_improved_elasticnet_model(df, split_type='random', use_feature_selection=True, custom_target=None):
     """
     Trains an ElasticNetCV model with preprocessing and optional feature selection.
 
@@ -61,7 +61,8 @@ def train_improved_elasticnet_model(df, split_type='random', use_feature_selecti
     id_cols = ['dates', 'date']
     existing_id_cols = [col for col in id_cols if col in df.columns]
     X = df.drop(columns=[target] + existing_id_cols)
-    y = df[target]
+    y = custom_target if custom_target is not None else df[target]
+
 
     categorical_features = ['state'] if 'state' in X.columns else []
     numerical_features = X.select_dtypes(include=['float64', 'int64']).columns.difference(categorical_features).tolist()
