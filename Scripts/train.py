@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 
 import optuna
-from xgboost import XGBRegressor
+from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.model_selection import GroupKFold
 
 def train_eval():
@@ -60,13 +60,11 @@ def train_eval():
 
         def objective(trial):
             params = {
+                "max_iter": trial.suggest_int("max_iter", 100, 1000, step=50),
                 "max_depth": trial.suggest_int("max_depth", 1, 51, step=2),
                 "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.5, step = 0.01),
-                "n_estimators": trial.suggest_int("n_estimators", 10, 1000),
-                "subsample": trial.suggest_float("subsample", 0.1, 1.0, step = 0.1),
-                "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0, step = 0.1),
-                "reg_alpha": trial.suggest_float("reg_alpha", 0.0, 1.0, step = 0.01),
-                "reg_lambda": trial.suggest_float("reg_lambda", 0.0, 1.0, step = 0.01),
+                "l2_regularization": trial.suggest_float("l2_regularization", 0.0, 1.0),
+                "max_bins": trial.suggest_int("max_bins", 100, 255),
                 "random_state": config["seed"]
             }
             # Inner CV for hyperparameter tuning
@@ -76,7 +74,7 @@ def train_eval():
                 # Inner cv split
                 X_inner_train, X_inner_val = X_train.iloc[inner_train_idx], X_train.iloc[inner_val_idx]
                 y_inner_train, y_inner_val = y_train.iloc[inner_train_idx], y_train.iloc[inner_val_idx]
-                model = XGBRegressor(**params)
+                model = HistGradientBoostingRegressor(**params)
                 model.fit(X_inner_train, y_inner_train)
                 y_pred = model.predict(X_inner_val)
 
