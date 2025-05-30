@@ -97,7 +97,7 @@ import numpy as np
 
 def enhanced_data():
     # Load the Denis dataset
-    df = pd.read_csv('../Data/Processed/train_data.csv')
+    df = pd.read_csv('../Data/Processed/update.csv')
 
     # Ensure date format and sort
     df['date'] = pd.to_datetime(df['dates'])

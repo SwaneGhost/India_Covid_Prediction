@@ -4,6 +4,7 @@ Includes data splitting, preprocessing, optional feature selection, and model ev
 """
 
 import numpy as np
+from sklearn.feature_selection import SelectKBest, f_regression, VarianceThreshold
 from sklearn.model_selection import train_test_split, cross_val_score, GroupKFold, TimeSeriesSplit
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
@@ -41,20 +42,8 @@ def remove_highly_correlated_features(df, target_col='cum_positive_cases',
     return df_clean
 
 
-def train_improved_elasticnet_model(df, split_type='random', use_feature_selection=True, custom_target=None):
-    """
-    Trains an ElasticNetCV model with preprocessing and optional feature selection.
 
-    Parameters:
-        df (pd.DataFrame): The input DataFrame.
-        split_type (str): One of 'random', 'by_state', or 'time'.
-        use_feature_selection (bool): Whether to include SelectKBest before regression.
-
-    Returns:
-        model_pipeline: Trained scikit-learn pipeline.
-        X_train_final, X_test_final: Feature sets.
-        y_train, y_test: Targets.
-    """
+def train_refined_elasticnet_model(df, split_type='random', custom_target=None):
     print(f"Splitting method: {split_type}")
 
     target = 'cum_positive_cases'
@@ -63,51 +52,49 @@ def train_improved_elasticnet_model(df, split_type='random', use_feature_selecti
     X = df.drop(columns=[target] + existing_id_cols)
     y = custom_target if custom_target is not None else df[target]
 
-
     categorical_features = ['state'] if 'state' in X.columns else []
     numerical_features = X.select_dtypes(include=['float64', 'int64']).columns.difference(categorical_features).tolist()
 
+    # === Variance Threshold ===
+    vt = VarianceThreshold(threshold=1e-4)
+    X_num_filtered = vt.fit_transform(X[numerical_features])
+    retained_numerical = np.array(numerical_features)[vt.get_support()].tolist()
+
+    # === SelectKBest ===
+    selector = SelectKBest(score_func=f_regression, k=min(20, len(retained_numerical)))
+    X_kbest_filtered = selector.fit_transform(X[retained_numerical], y)
+    selected_numerical = np.array(retained_numerical)[selector.get_support()].tolist()
+
+    # === Preprocessor ===
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', Pipeline([
                 ('imputer', SimpleImputer(strategy='median')),
                 ('scaler', RobustScaler())
-            ]), numerical_features),
+            ]), selected_numerical),
             ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), categorical_features)
         ] if categorical_features else [
             ('num', Pipeline([
                 ('imputer', SimpleImputer(strategy='median')),
                 ('scaler', RobustScaler())
-            ]), numerical_features)
+            ]), selected_numerical)
         ]
     )
 
-    if use_feature_selection:
-        from sklearn.feature_selection import SelectKBest, f_regression
-        feature_selector = SelectKBest(score_func=f_regression, k=min(20, len(numerical_features)))
-        model_pipeline = Pipeline([
-            ('preprocessor', preprocessor),
-            ('feature_selection', feature_selector),
-            ('regressor', ElasticNetCV(
-                l1_ratio=[.1, .3, .5, .7, .9, .95, .99, 1],
-                alphas=np.logspace(-4, 1, 50),
-                max_iter=10000,
-                cv=10,
-                random_state=42
-            ))
-        ])
-    else:
-        model_pipeline = Pipeline([
-            ('preprocessor', preprocessor),
-            ('regressor', ElasticNetCV(
-                l1_ratio=[.1, .3, .5, .7, .9, .95, .99, 1],
-                alphas=np.logspace(-4, 1, 50),
-                max_iter=10000,
-                cv=10,
-                random_state=42
-            ))
-        ])
+    # === Model Pipeline ===
+    model_pipeline = Pipeline([
+        ('preprocessor', preprocessor),
+        ('regressor', ElasticNetCV(
+            l1_ratio=[.1, .3, .5, .7, .9, .95, .99, 1],
+            alphas=np.logspace(-4, 1, 50),
+            max_iter=20000,
+            tol=1e-4,
+            cv=10,
+            random_state=42
+        ))
+    ])
 
+    # === Train/Test Split ===
     if split_type == 'random':
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     elif split_type == 'by_state':
@@ -131,24 +118,21 @@ def train_improved_elasticnet_model(df, split_type='random', use_feature_selecti
     else:
         raise ValueError("split_type must be one of: 'random', 'by_state', 'time'")
 
+    # === Fit Model ===
     model_pipeline.fit(X_train, y_train)
-
     y_pred = model_pipeline.predict(X_test)
+
     rmse = mean_squared_error(y_test, y_pred, squared=False)
     r2 = r2_score(y_test, y_pred)
 
-    baseline_pred = np.full_like(y_test, y_train.mean())
-    baseline_rmse = mean_squared_error(y_test, baseline_pred, squared=False)
-    baseline_r2 = r2_score(y_test, baseline_pred)
-
-    print(f"Test RMSE: {rmse:.2f} (Baseline: {baseline_rmse:.2f})")
-    print(f"Test R²: {r2:.4f} (Baseline: {baseline_r2:.4f})")
+    print(f"Test RMSE: {rmse:.2f}")
+    print(f"Test R²: {r2:.4f}")
 
     if hasattr(model_pipeline.named_steps['regressor'], 'alpha_'):
         print(f"Selected alpha: {model_pipeline.named_steps['regressor'].alpha_:.6f}")
         print(f"Selected l1_ratio: {model_pipeline.named_steps['regressor'].l1_ratio_:.2f}")
 
-    print("Running cross-validation...")
+    # === Cross-validation ===
     if split_type == 'by_state':
         cv = GroupKFold(n_splits=5)
         groups = X['state']
@@ -166,8 +150,5 @@ def train_improved_elasticnet_model(df, split_type='random', use_feature_selecti
     overfitting_gap = train_score - r2
     print(f"Train R²: {train_score:.4f}")
     print(f"Overfitting gap: {overfitting_gap:.4f}")
-
-    if overfitting_gap > 0.1:
-        print("Model may be overfitting. Consider stronger regularization or simpler features.")
 
     return model_pipeline, X_train.copy(), X_test.copy(), y_train, y_test

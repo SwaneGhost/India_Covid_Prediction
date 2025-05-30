@@ -1,85 +1,136 @@
 """
 Main script for COVID-19 prediction using ElasticNet.
+Fixed to handle pipeline structure and resolve console issues.
 """
 
 import pandas as pd
 import numpy as np
-from Code.pipeline_utils import prepare_training_data, print_selected_features, save_model
-from notebooks.EDA import eda
-from Code.enhanced_data import enhanced_data
-from Code.model_train import train_improved_elasticnet_model
-from notebooks.shap_analysis import run_shap_analysis
-
-# Step 1: Data Preparation
-print("Step 1: Loading and preparing data...")
-df = enhanced_data()
-
-# Step 2: Exploratory Data Analysis
-print("\nStep 2: Exploratory Data Analysis...")
-# eda(df)
-
-# Step 3–5: Feature Engineering, Correlation Filtering, Feature Selection
-print("\nStep 3–5: Preparing training features...")
-X_selected, y_raw, df_selected = prepare_training_data(df, target_col='cum_positive_cases', k=20)
-y = np.log1p(y_raw)  # Log-transform the target
-
-
-
-# Step 6: Model Training
-print("\nStep 6: Training ElasticNet model...")
-model, X_train_final, X_test_final, y_train_log, y_test_log = train_improved_elasticnet_model(
-    df_selected,
-    split_type='by_state',
-    custom_target=y  # This is the log-transformed target
-)
-
+import warnings
 from sklearn.metrics import mean_squared_error, r2_score
 
-print("\nEvaluating predictions on original scale...")
+from notebooks.shap_analysis import run_shap_analysis
 
-# Predict on test set (log scale)
-y_pred_log = model.predict(X_test_final)
+# Suppress convergence warnings
+warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', message='Objective did not converge')
 
-# Inverse transform to original scale
-y_pred = np.expm1(y_pred_log)
-y_test_original = np.expm1(y_test_log)
-
-# Evaluate
-rmse = mean_squared_error(y_test_original, y_pred, squared=False)
-r2 = r2_score(y_test_original, y_pred)
-
-print(f"Test RMSE (original scale): {rmse:.2f}")
-print(f"Test R² (original scale): {r2:.4f}")
-
-
-# === Step 7: Hyperparameter Tuning ===
-print("\nStep 7: Hyperparameter tuning...")
+from Code.pipeline_utils import prepare_training_data, print_selected_features, save_model, get_feature_names_from_pipeline
+from Code.enhanced_data import enhanced_data
+from Code.model_train import train_refined_elasticnet_model
 from Code.HyperTuning import tune_elasticnet_model
 
-categorical_features = ['state']
-numerical_features = X_selected.select_dtypes(include=['float64', 'int64']).columns.difference(categorical_features).tolist()
+def main():
+    # Step 1: Data Preparation
+    print("Step 1: Loading and preparing data...")
+    df = enhanced_data()
 
-# Run Optuna-based tuning
-best_model = tune_elasticnet_model(X_selected, y, categorical_features, numerical_features, n_trials=50)
+    # Step 2: (Optional) Exploratory Data Analysis
+    # from notebooks.EDA import eda
+    # eda(df)
 
+    # Step 3–5: Feature Engineering and Selection
+    print("\nStep 3–5: Preparing training features...")
+    X_selected, y_raw, df_selected = prepare_training_data(df, target_col='cum_positive_cases', k='all')
+    y = np.log1p(y_raw)  # Target transformation
 
+    print(f"Final dataset shape: {X_selected.shape}")
+    print(f"Features: {list(X_selected.columns)}")
 
-# Step 7: Print final feature names
-print_selected_features(model)
+    # Step 6: Base Model Training (optional baseline)
+    print("\nStep 6: Training baseline ElasticNet model...")
+    try:
+        model, X_train_final, X_test_final, y_train_log, y_test_log = train_refined_elasticnet_model(
+            df_selected,
+            split_type='by_state',
+            custom_target=y
+        )
 
-# Step 8: Save trained model
-save_model(model, "trained_elasticnet_model.joblib")
+        print("\nEvaluating predictions on original scale...")
+        y_pred_log = model.predict(X_test_final)
+        y_pred = np.expm1(y_pred_log)
+        y_test_original = np.expm1(y_test_log)
 
-# Step 9: SHAP Analysis
-demo_features = [
-    'population', 'GDP', 'area', 'density',
-    'Hindu', 'Muslim', 'Christian', 'Sikhs', 'Buddhist', 'Others',
-    'primary_health_centers', 'community_health_centers', 'sub_district_hospitals',
-    'district_hospitals', 'public_health_facilities', 'public_beds',
-    'urban_hospitals', 'urban_beds', 'rural_hospitals', 'rural_beds',
-    'Male literacy rate %', 'Female literacy rate %', 'Average literacy rate %',
-    'Female to Male ratio', 'per capita in'
-]
-run_shap_analysis(model, X_train_final, demo_features)
+        rmse = mean_squared_error(y_test_original, y_pred, squared=False)
+        r2 = r2_score(y_test_original, y_pred)
+        print(f"Test RMSE (original scale): {rmse:.2f}")
+        print(f"Test R² (original scale): {r2:.4f}")
+    except Exception as e:
+        print(f"Baseline model training failed: {e}")
 
-print("\nAnalysis complete.")
+    # Step 7: Hyperparameter Tuning with Optuna (returns full pipeline)
+    print("\nStep 7: Hyperparameter tuning...")
+    categorical_features = ['state']
+    numerical_features = X_selected.select_dtypes(include=['float64', 'int64']).columns.difference(categorical_features).tolist()
+
+    print(f"Categorical features: {categorical_features}")
+    print(f"Number of numerical features: {len(numerical_features)}")
+
+    best_model = tune_elasticnet_model(
+        X_selected, y,
+        categorical_features=categorical_features,
+        numerical_features=numerical_features,
+        n_trials=30  # Reduced for faster execution
+    )
+
+    # Step 8: Feature Reporting
+    print("\nStep 8: Selected Features Analysis:")
+    print_selected_features(best_model, numerical_features)
+
+    # Get feature names from pipeline
+    final_feature_names = get_feature_names_from_pipeline(best_model)
+    if final_feature_names is not None:
+        print(f"Total features in final model: {len(final_feature_names)}")
+
+    # Step 9: Save Trained Model
+    save_model(best_model, "trained_elasticnet_model.joblib")
+
+    # Step 10: Model Evaluation
+    print("\nStep 10: Final Model Evaluation...")
+    try:
+        from sklearn.model_selection import train_test_split
+        X_train, X_test, y_train, y_test = train_test_split(X_selected, y, test_size=0.2, random_state=42)
+
+        # Fit and predict
+        best_model.fit(X_train, y_train)
+        y_pred_log = best_model.predict(X_test)
+
+        # Convert back to original scale
+        y_pred_original = np.expm1(y_pred_log)
+        y_test_original = np.expm1(y_test)
+
+        # Calculate metrics
+        rmse = mean_squared_error(y_test_original, y_pred_original, squared=False)
+        r2 = r2_score(y_test_original, y_pred_original)
+
+        print(f"Final Model Performance:")
+        print(f"  • Test RMSE (original scale): {rmse:.2f}")
+        print(f"  • Test R² (original scale): {r2:.4f}")
+
+    except Exception as e:
+        print(f"Model evaluation failed: {e}")
+
+    # Step 11: SHAP Analysis
+    print("\nStep 11: SHAP Analysis...")
+    demo_features = [
+        'population', 'GDP', 'area', 'density',
+        'Hindu', 'Muslim', 'Christian', 'Sikhs', 'Buddhist', 'Others',
+        'primary_health_centers', 'community_health_centers', 'sub_district_hospitals',
+        'district_hospitals', 'public_health_facilities', 'public_beds',
+        'urban_hospitals', 'urban_beds', 'rural_hospitals', 'rural_beds',
+        'Male literacy rate', 'Female literacy rate', 'Average literacy rate',
+        'Female to Male ratio', 'per capita'
+    ]
+
+    try:
+        shap_values, explainer = run_shap_analysis(best_model, X_selected, demo_features, max_display=10)
+        if shap_values is not None:
+            print("SHAP analysis completed successfully!")
+        else:
+            print("SHAP analysis failed - check the error messages above")
+    except Exception as e:
+        print(f"SHAP analysis failed with error: {e}")
+
+    print("\n✅ Analysis complete!")
+
+if __name__ == "__main__":
+    main()

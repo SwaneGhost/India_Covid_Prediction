@@ -7,9 +7,10 @@ import numpy as np
 def run_shap_analysis(model, X_raw, demo_features=None, max_display=15):
     """
     Run SHAP analysis to interpret model predictions.
+    Fixed to handle the new pipeline structure correctly.
 
     Parameters:
-        model: Trained sklearn pipeline with steps: preprocessor, feature_selection, regressor
+        model: Trained sklearn pipeline with steps: preprocessor, regressor
         X_raw (pd.DataFrame): Raw input features before transformation
         demo_features (list): List of demographic/socioeconomic feature keywords to track
         max_display (int): Number of top features to display in global SHAP summary
@@ -21,56 +22,88 @@ def run_shap_analysis(model, X_raw, demo_features=None, max_display=15):
     print("=" * 60)
 
     try:
+        # Get the preprocessor and regressor from the pipeline
         preprocessor = model.named_steps['preprocessor']
-        selector = model.named_steps['feature_selection']
         regressor = model.named_steps['regressor']
 
-        # Step 1: Apply preprocessing
-        X_preprocessed = preprocessor.transform(X_raw)
+        # Apply preprocessing to get the final feature matrix
+        X_processed = preprocessor.transform(X_raw)
 
-        # Step 2: Feature selection
-        X_selected = selector.transform(X_preprocessed)
+        # Get feature names after preprocessing
+        try:
+            feature_names = preprocessor.get_feature_names_out()
+        except:
+            # Fallback if get_feature_names_out is not available
+            feature_names = [f'feature_{i}' for i in range(X_processed.shape[1])]
 
-        # Step 3: Get feature names after preprocessing and selection
-        all_feature_names = preprocessor.get_feature_names_out()
-        selected_mask = selector.get_support()
-        selected_feature_names = all_feature_names[selected_mask]
+        print(f"Number of features after preprocessing: {X_processed.shape[1]}")
+        print(f"Sample size for SHAP: {X_processed.shape[0]}")
 
-        # Step 4: Run SHAP Explainer
-        explainer = shap.Explainer(regressor.predict, X_selected)
-        shap_values = explainer(X_selected)
+        # Create SHAP explainer for the regressor only (using preprocessed data)
+        # Use a sample of data if dataset is too large
+        sample_size = min(1000, X_processed.shape[0])
+        if X_processed.shape[0] > sample_size:
+            sample_indices = np.random.choice(X_processed.shape[0], sample_size, replace=False)
+            X_sample = X_processed[sample_indices]
+            print(f"Using random sample of {sample_size} observations for SHAP analysis")
+        else:
+            X_sample = X_processed
 
-        # Step 5: Global feature importance
+        # Create explainer
+        explainer = shap.Explainer(regressor.predict, X_sample)
+        shap_values = explainer(X_sample)
+
+        # Global feature importance plot
         print(f"\nTop {max_display} features by SHAP value:")
-        shap.plots.bar(shap_values, max_display=max_display, show=True)
+        try:
+            shap.plots.bar(shap_values, max_display=max_display, show=True)
+        except Exception as e:
+            print(f"Could not create SHAP bar plot: {e}")
 
-        # Step 6: Focus on demographic/socioeconomic features
+        # Summary of feature importance
+        feature_importance = pd.DataFrame({
+            'feature': feature_names,
+            'mean_abs_shap': np.abs(shap_values.values).mean(axis=0)
+        }).sort_values('mean_abs_shap', ascending=False)
+
+        print("\nTop 15 most important features:")
+        print(feature_importance.head(15).to_string(index=False))
+
+        # Focus on demographic/socioeconomic features if specified
         if demo_features:
-            df_summary = pd.DataFrame({
-                'feature': selected_feature_names,
-                'mean_abs_shap': np.abs(shap_values.values).mean(axis=0)
-            })
+            # Create a more flexible matching pattern
+            demo_pattern = '|'.join([feat.lower().replace(' ', '').replace('%', '')
+                                     for feat in demo_features])
 
-            # Filter features that match any of the demographic keywords
-            demo_mask = df_summary['feature'].str.contains('|'.join(demo_features))
-            df_demo = df_summary[demo_mask].copy()
-            df_demo = df_demo.sort_values('mean_abs_shap', ascending=False)
+            # Match features (case-insensitive, flexible matching)
+            feature_names_clean = [name.lower().replace(' ', '').replace('%', '')
+                                   for name in feature_importance['feature']]
 
-            # Print summary
-            print("\nSHAP values for selected demographic/socioeconomic features:")
-            pd.set_option("display.max_rows", None)
-            print(df_demo.to_string(index=False))
+            demo_mask = [any(demo_word in feat_name for demo_word in demo_pattern.split('|')
+                             for feat_name in [feature_names_clean[i]])
+                         for i in range(len(feature_names_clean))]
 
-            # Plot selected features
-            plt.figure(figsize=(10, max(6, 0.4 * len(df_demo))))
-            plt.barh(df_demo['feature'], df_demo['mean_abs_shap'], color='steelblue')
-            plt.title('Mean SHAP Value - Demographic and Socioeconomic Features')
-            plt.xlabel('Mean Absolute SHAP Value')
-            plt.tight_layout()
-            plt.show()
+            df_demo = feature_importance[demo_mask].copy()
+
+            if len(df_demo) > 0:
+                print(f"\nSHAP values for {len(df_demo)} demographic/socioeconomic features:")
+                print(df_demo.to_string(index=False))
+
+                # Plot demographic features
+                plt.figure(figsize=(12, max(6, 0.4 * len(df_demo))))
+                plt.barh(range(len(df_demo)), df_demo['mean_abs_shap'], color='steelblue')
+                plt.yticks(range(len(df_demo)), df_demo['feature'])
+                plt.title('Mean SHAP Value - Demographic and Socioeconomic Features')
+                plt.xlabel('Mean Absolute SHAP Value')
+                plt.tight_layout()
+                plt.show()
+            else:
+                print("\nNo demographic/socioeconomic features found in the selected features.")
 
         return shap_values, explainer
 
     except Exception as e:
         print(f"SHAP analysis failed: {e}")
+        import traceback
+        traceback.print_exc()
         return None, None
