@@ -13,7 +13,7 @@ def predict():
     """
 
     # load config file
-    config_path = os.path.join("Configs", "config.yaml")
+    config_path = os.path.join("Config", "configs.yaml")
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Config file not found at {config_path}")
     
@@ -67,7 +67,7 @@ def predict():
         gt_and_preds.loc[test_idx, "predictions"] = preds
 
     # Save the predictions to a CSV file
-    gt_and_preds.to_csv(os.path.join("Runs", "run_20250526_204409", "gt_vs_predictions.csv"), index=False)
+    gt_and_preds.to_csv(os.path.join(last_run_folder, "gt_vs_predictions.csv"), index=False)
 
     # Plot and save the predictions
     plt.figure(figsize=(10, 6))
@@ -78,5 +78,6 @@ def predict():
     plt.xlabel("Ground Truth")
     plt.ylabel("Predictions")
     plt.title("Ground Truth vs Predictions")
-    plt.savefig(os.path.join("Figures", "gt_vs_predictions_plot_XGBRegressor.png"))
+    timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+    plt.savefig(os.path.join("Figures", f"gt_vs_predictions_plot_XGBRegressor_{timestamp}.png"))
     plt.show()
