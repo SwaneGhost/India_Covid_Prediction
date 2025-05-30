@@ -60,10 +60,10 @@ def train_eval():
 
         def objective(trial):
             params = {
-                "max_iter": trial.suggest_int("max_iter", 100, 1000, step=50),
+                "max_iter": trial.suggest_int("max_iter", 100, 2000, step=100),
                 "max_depth": trial.suggest_int("max_depth", 1, 51, step=2),
                 "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.5, step = 0.01),
-                "l2_regularization": trial.suggest_float("l2_regularization", 0.0, 1.0),
+                "l2_regularization": trial.suggest_float("l2_regularization", 0.0, 1.0, step = 0.01),
                 "max_bins": trial.suggest_int("max_bins", 100, 255),
                 "random_state": config["seed"]
             }
@@ -91,7 +91,7 @@ def train_eval():
         
         # Train the model with the best hyperparameters on the full training set
         best_params = study.best_params
-        model = XGBRegressor(**best_params)
+        model = HistGradientBoostingRegressor(**best_params)
         model.fit(X_train, y_train)
         y_train_pred = model.predict(X_train)
         y_test_pred = model.predict(X_test)
