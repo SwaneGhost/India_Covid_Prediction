@@ -1,6 +1,6 @@
 """
 Module for training ElasticNet models on the COVID-19 dataset.
-Includes data splitting, preprocessing, optional feature selection, and model evaluation.
+Includes data splitting, preprocessing, feature selection, model fitting, and evaluation.
 """
 
 import numpy as np
@@ -18,19 +18,26 @@ def remove_highly_correlated_features(df, target_col='cum_positive_cases',
                                       target_corr_threshold=0.93,
                                       feature_corr_threshold=0.85):
     """
-    Removes features highly correlated with the target or with each other.
+    Removes columns that are too correlated with the target or with each other.
+    Helps reduce data leakage and multicollinearity.
     """
+
     df_clean = df.copy()
+
+    # Drop identifier columns if they exist
     drop_cols = ['dates', 'date']
     df_features = df_clean.drop(columns=drop_cols, errors='ignore')
 
+    # Focus only on numeric columns
     numeric_df = df_features.select_dtypes(include=[np.number])
 
+    # Remove features too strongly correlated with the target
     corr_with_target = numeric_df.corr()[target_col].drop(target_col)
     to_drop_target = corr_with_target[abs(corr_with_target) > target_corr_threshold].index.tolist()
     print(f"Removing features highly correlated with the target (> {target_corr_threshold}): {to_drop_target}")
     df_clean.drop(columns=to_drop_target, inplace=True)
 
+    # Remove features too strongly correlated with other features
     numeric_df = df_clean.select_dtypes(include=[np.number])
     corr_matrix = numeric_df.drop(columns=[target_col], errors='ignore').corr().abs()
     upper_tri = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
@@ -42,8 +49,21 @@ def remove_highly_correlated_features(df, target_col='cum_positive_cases',
     return df_clean
 
 
-
 def train_refined_elasticnet_model(df, split_type='random', custom_target=None):
+    """
+    Trains an ElasticNetCV model using a pipeline with preprocessing and feature selection.
+    Supports different data splitting methods and prints evaluation metrics.
+
+    Parameters:
+        df (DataFrame): Full input data with features and target.
+        split_type (str): How to split the data: 'random', 'by_state', or 'time'.
+        custom_target (Series, optional): Use a transformed target instead of the default.
+
+    Returns:
+        model_pipeline (Pipeline): Trained pipeline.
+        X_train, X_test (DataFrame): Training and testing features.
+        y_train, y_test (Series): Training and testing targets.
+    """
     print(f"Splitting method: {split_type}")
 
     target = 'cum_positive_cases'
@@ -52,20 +72,22 @@ def train_refined_elasticnet_model(df, split_type='random', custom_target=None):
     X = df.drop(columns=[target] + existing_id_cols)
     y = custom_target if custom_target is not None else df[target]
 
+    # Identify categorical and numerical features
     categorical_features = ['state'] if 'state' in X.columns else []
-    numerical_features = X.select_dtypes(include=['float64', 'int64']).columns.difference(categorical_features).tolist()
+    numerical_features = X.select_dtypes(include=['float64', 'int64']) \
+                          .columns.difference(categorical_features).tolist()
 
-    # === Variance Threshold ===
+    # Remove low-variance numerical features
     vt = VarianceThreshold(threshold=1e-4)
     X_num_filtered = vt.fit_transform(X[numerical_features])
     retained_numerical = np.array(numerical_features)[vt.get_support()].tolist()
 
-    # === SelectKBest ===
+    # Select top numerical features using f_regression
     selector = SelectKBest(score_func=f_regression, k=min(20, len(retained_numerical)))
     X_kbest_filtered = selector.fit_transform(X[retained_numerical], y)
     selected_numerical = np.array(retained_numerical)[selector.get_support()].tolist()
 
-    # === Preprocessor ===
+    # Build preprocessing pipeline
     preprocessor = ColumnTransformer(
         transformers=[
             ('num', Pipeline([
@@ -81,7 +103,7 @@ def train_refined_elasticnet_model(df, split_type='random', custom_target=None):
         ]
     )
 
-    # === Model Pipeline ===
+    # Build model pipeline with ElasticNetCV
     model_pipeline = Pipeline([
         ('preprocessor', preprocessor),
         ('regressor', ElasticNetCV(
@@ -94,7 +116,7 @@ def train_refined_elasticnet_model(df, split_type='random', custom_target=None):
         ))
     ])
 
-    # === Train/Test Split ===
+    # Choose how to split the data
     if split_type == 'random':
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     elif split_type == 'by_state':
@@ -118,21 +140,22 @@ def train_refined_elasticnet_model(df, split_type='random', custom_target=None):
     else:
         raise ValueError("split_type must be one of: 'random', 'by_state', 'time'")
 
-    # === Fit Model ===
+    # Fit the pipeline on training data
     model_pipeline.fit(X_train, y_train)
     y_pred = model_pipeline.predict(X_test)
 
+    # Evaluate model on test set
     rmse = mean_squared_error(y_test, y_pred, squared=False)
     r2 = r2_score(y_test, y_pred)
-
     print(f"Test RMSE: {rmse:.2f}")
     print(f"Test R²: {r2:.4f}")
 
+    # Print best alpha and l1_ratio found during CV
     if hasattr(model_pipeline.named_steps['regressor'], 'alpha_'):
         print(f"Selected alpha: {model_pipeline.named_steps['regressor'].alpha_:.6f}")
         print(f"Selected l1_ratio: {model_pipeline.named_steps['regressor'].l1_ratio_:.2f}")
 
-    # === Cross-validation ===
+    # Run cross-validation to check model performance
     if split_type == 'by_state':
         cv = GroupKFold(n_splits=5)
         groups = X['state']
@@ -146,6 +169,7 @@ def train_refined_elasticnet_model(df, split_type='random', custom_target=None):
     scores = cross_val_score(model_pipeline, X, y, cv=cv, scoring='r2', groups=groups)
     print(f"Cross-validated R²: mean = {scores.mean():.4f}, std = {scores.std():.4f}")
 
+    # Compare train vs test R²
     train_score = model_pipeline.score(X_train, y_train)
     overfitting_gap = train_score - r2
     print(f"Train R²: {train_score:.4f}")

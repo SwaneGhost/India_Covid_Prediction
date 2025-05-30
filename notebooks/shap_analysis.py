@@ -6,41 +6,39 @@ import numpy as np
 
 def run_shap_analysis(model, X_raw, demo_features=None, max_display=15):
     """
-    Run SHAP analysis to interpret model predictions.
-    Fixed to handle the new pipeline structure correctly.
+    Runs SHAP analysis on a trained pipeline model to interpret feature importance.
 
     Parameters:
-        model: Trained sklearn pipeline with steps: preprocessor, regressor
-        X_raw (pd.DataFrame): Raw input features before transformation
-        demo_features (list): List of demographic/socioeconomic feature keywords to track
-        max_display (int): Number of top features to display in global SHAP summary
+        model: Trained sklearn pipeline with a 'preprocessor' and 'regressor'
+        X_raw (DataFrame): Input data before transformation
+        demo_features (list): List of keywords for demographic/socioeconomic features
+        max_display (int): Number of top features to display in summary plot
 
     Returns:
-        shap_values, explainer
+        shap_values: SHAP value object
+        explainer: SHAP explainer object
     """
-    print("Running SHAP analysis...")
+    print("Running SHAP analysis")
     print("=" * 60)
 
     try:
-        # Get the preprocessor and regressor from the pipeline
+        # Get preprocessing and model components from the pipeline
         preprocessor = model.named_steps['preprocessor']
         regressor = model.named_steps['regressor']
 
-        # Apply preprocessing to get the final feature matrix
+        # Apply preprocessing to raw input
         X_processed = preprocessor.transform(X_raw)
 
-        # Get feature names after preprocessing
+        # Try to get feature names from the preprocessor
         try:
             feature_names = preprocessor.get_feature_names_out()
         except:
-            # Fallback if get_feature_names_out is not available
             feature_names = [f'feature_{i}' for i in range(X_processed.shape[1])]
 
         print(f"Number of features after preprocessing: {X_processed.shape[1]}")
         print(f"Sample size for SHAP: {X_processed.shape[0]}")
 
-        # Create SHAP explainer for the regressor only (using preprocessed data)
-        # Use a sample of data if dataset is too large
+        # Use a sample of the data if it's too large
         sample_size = min(1000, X_processed.shape[0])
         if X_processed.shape[0] > sample_size:
             sample_indices = np.random.choice(X_processed.shape[0], sample_size, replace=False)
@@ -49,18 +47,18 @@ def run_shap_analysis(model, X_raw, demo_features=None, max_display=15):
         else:
             X_sample = X_processed
 
-        # Create explainer
+        # Create a SHAP explainer based on model prediction
         explainer = shap.Explainer(regressor.predict, X_sample)
         shap_values = explainer(X_sample)
 
-        # Global feature importance plot
+        # Print top features by SHAP value
         print(f"\nTop {max_display} features by SHAP value:")
         try:
             shap.plots.bar(shap_values, max_display=max_display, show=True)
         except Exception as e:
             print(f"Could not create SHAP bar plot: {e}")
 
-        # Summary of feature importance
+        # Compute and print feature importance summary
         feature_importance = pd.DataFrame({
             'feature': feature_names,
             'mean_abs_shap': np.abs(shap_values.values).mean(axis=0)
@@ -69,19 +67,15 @@ def run_shap_analysis(model, X_raw, demo_features=None, max_display=15):
         print("\nTop 15 most important features:")
         print(feature_importance.head(15).to_string(index=False))
 
-        # Focus on demographic/socioeconomic features if specified
+        # If a list of demographic/socioeconomic features is provided, filter and report them
         if demo_features:
-            # Create a more flexible matching pattern
-            demo_pattern = '|'.join([feat.lower().replace(' ', '').replace('%', '')
-                                     for feat in demo_features])
+            demo_pattern = '|'.join([feat.lower().replace(' ', '').replace('%', '') for feat in demo_features])
+            feature_names_clean = [name.lower().replace(' ', '').replace('%', '') for name in feature_importance['feature']]
 
-            # Match features (case-insensitive, flexible matching)
-            feature_names_clean = [name.lower().replace(' ', '').replace('%', '')
-                                   for name in feature_importance['feature']]
-
-            demo_mask = [any(demo_word in feat_name for demo_word in demo_pattern.split('|')
-                             for feat_name in [feature_names_clean[i]])
-                         for i in range(len(feature_names_clean))]
+            demo_mask = [
+                any(demo_word in feature_names_clean[i] for demo_word in demo_pattern.split('|'))
+                for i in range(len(feature_names_clean))
+            ]
 
             df_demo = feature_importance[demo_mask].copy()
 
@@ -89,7 +83,7 @@ def run_shap_analysis(model, X_raw, demo_features=None, max_display=15):
                 print(f"\nSHAP values for {len(df_demo)} demographic/socioeconomic features:")
                 print(df_demo.to_string(index=False))
 
-                # Plot demographic features
+                # Plot demographic SHAP summary
                 plt.figure(figsize=(12, max(6, 0.4 * len(df_demo))))
                 plt.barh(range(len(df_demo)), df_demo['mean_abs_shap'], color='steelblue')
                 plt.yticks(range(len(df_demo)), df_demo['feature'])
@@ -98,7 +92,7 @@ def run_shap_analysis(model, X_raw, demo_features=None, max_display=15):
                 plt.tight_layout()
                 plt.show()
             else:
-                print("\nNo demographic/socioeconomic features found in the selected features.")
+                print("No demographic/socioeconomic features found in the selected features.")
 
         return shap_values, explainer
 
