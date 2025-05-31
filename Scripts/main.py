@@ -3,11 +3,13 @@ Main script for COVID-19 prediction using lasso.
 
 This script does the following:
 - Loads and prepares enhanced data
-- Engineers features and transforms the target
+- Engineers features (NO log transformation on target)
 - Trains a lasso model
 - Tunes hyperparameters using Optuna
 - Evaluates model performance
 - Analyzes feature importance with SHAP
+
+Updated to work directly with original target scale.
 """
 
 import pandas as pd
@@ -32,7 +34,6 @@ from Code.pipeline_utils import (
 from Code.enhanced_data import enhanced_data
 
 
-
 def main():
     # Step 1: Load and prepare dataset
     print("Step 1: Loading and preparing data...")
@@ -42,34 +43,37 @@ def main():
     # from notebooks.EDA import eda
     # eda(df)
 
-    # Step 3–5: Feature engineering and target transformation
+    # Step 3–5: Feature engineering (NO log transformation)
     print("\nStep 3–5: Preparing training features...")
     X_selected, y_raw, df_selected = prepare_training_data(df, target_col='cum_positive_cases', k='all')
-    y = np.log1p(y_raw)  # Log-transform the target
+    y = y_raw  # Use original scale directly - NO log transformation
 
     print(f"Final dataset shape: {X_selected.shape}")
+    print(f"Target variable range: {y.min():.0f} to {y.max():.0f}")
     print(f"Features: {list(X_selected.columns)}")
 
     # Step 6: Train lasso model
-    print("\nStep 6: Training  lasso model...")
+    print("\nStep 6: Training lasso model...")
     try:
-        model, X_train_final, X_test_final, y_train_log, y_test_log = train_lasso_model(
+        model, X_train_final, X_test_final, y_train, y_test = train_lasso_model(
             df_selected,
             split_type='by_state',
-            custom_target=y
+            custom_target=y  # Pass original scale target
         )
 
         print("\nEvaluating predictions on original scale...")
-        y_pred_log = model.predict(X_test_final)
-        y_pred = np.expm1(y_pred_log)
-        y_test_original = np.expm1(y_test_log)
+        y_pred = model.predict(X_test_final)  # Direct predictions in original scale
 
-        rmse = mean_squared_error(y_test_original, y_pred, squared=False)
-        r2 = r2_score(y_test_original, y_pred)
-        print(f"Test RMSE (original scale): {rmse:.2f}")
-        print(f"Test R2 (original scale): {r2:.4f}")
+        rmse = mean_squared_error(y_test, y_pred, squared=False)
+        r2 = r2_score(y_test, y_pred)
+        mae = mean_absolute_error(y_test, y_pred)
+
+        print(f"Test RMSE: {rmse:,.2f}")
+        print(f"Test R²: {r2:.4f}")
+        print(f"Test MAE: {mae:,.2f}")
+
     except Exception as e:
-        print(f"model training failed: {e}")
+        print(f"Model training failed: {e}")
 
     # Step 7: Hyperparameter tuning
     print("\nStep 7: Hyperparameter tuning...")
@@ -81,7 +85,7 @@ def main():
     print(f"Number of numerical features: {len(numerical_features)}")
 
     best_model = tune_lasso_model(
-        X_selected, y,
+        X_selected, y,  # Use original scale target
         categorical_features=categorical_features,
         numerical_features=numerical_features,
         n_trials=30
@@ -98,38 +102,43 @@ def main():
     # Step 9: Save trained model
     save_model(best_model, "trained_lasso_model.joblib")
 
-    # Step 10: Final Model Evaluation...
+    # Step 10: Final Model Evaluation
     print("\nStep 10: Final Model Evaluation...")
     try:
         from sklearn.model_selection import train_test_split
         X_train, X_test, y_train, y_test = train_test_split(X_selected, y, test_size=0.2, random_state=42)
 
         best_model.fit(X_train, y_train)
-        y_pred_log = best_model.predict(X_test)
-        y_pred_original = np.expm1(y_pred_log)
-        y_test_original = np.expm1(y_test)
+        y_pred = best_model.predict(X_test)  # Direct predictions in original scale
 
-        # Log-Transformed Metrics
-        r2_log = r2_score(y_test, y_pred_log)
-        rmse_log = mean_squared_error(y_test, y_pred_log, squared=False)
-        mae_log = mean_absolute_error(y_test, y_pred_log)
+        # Calculate metrics in original scale
+        r2_score_final = r2_score(y_test, y_pred)
+        rmse_final = mean_squared_error(y_test, y_pred, squared=False)
+        mae_final = mean_absolute_error(y_test, y_pred)
 
-        # Original Scale Metrics
-        r2_original = r2_score(y_test_original, y_pred_original)
-        rmse_original = mean_squared_error(y_test_original, y_pred_original, squared=False)
-        mae_original = mean_absolute_error(y_test_original, y_pred_original)
+        # Calculate training metrics to check overfitting
+        y_train_pred = best_model.predict(X_train)
+        r2_train = r2_score(y_train, y_train_pred)
+        rmse_train = mean_squared_error(y_train, y_train_pred, squared=False)
 
-        print("\nModel Performance Summary:")
+        print("\nFinal Model Performance Summary:")
         print("=" * 50)
-        print("Log-Transformed Target Metrics:")
-        print(f"  R² (log scale): {r2_log:.4f}")
-        print(f"  RMSE (log scale): {rmse_log:.4f}")
-        print(f"  MAE  (log scale): {mae_log:.4f}")
+        print("Training Metrics:")
+        print(f"  R²: {r2_train:.4f}")
+        print(f"  RMSE: {rmse_train:,.2f}")
 
-        print("\nOriginal Target Scale Metrics (for reference only):")
-        print(f"  R² (original scale): {r2_original:.4f}")
-        print(f"  RMSE (original scale): {rmse_original:,.2f}")
-        print(f"  MAE  (original scale): {mae_original:,.2f}")
+        print("\nTest Metrics:")
+        print(f"  R²: {r2_score_final:.4f}")
+        print(f"  RMSE: {rmse_final:,.2f}")
+        print(f"  MAE: {mae_final:,.2f}")
+
+        print(f"\nOverfitting Check:")
+        print(f"  R² difference (train - test): {r2_train - r2_score_final:.4f}")
+
+        print(f"\nPrediction Range:")
+        print(f"  Min prediction: {y_pred.min():,.0f}")
+        print(f"  Max prediction: {y_pred.max():,.0f}")
+        print(f"  Actual range: {y_test.min():,.0f} to {y_test.max():,.0f}")
         print("=" * 50)
 
     except Exception as e:
@@ -151,12 +160,13 @@ def main():
         shap_values, explainer = run_shap_analysis(best_model, X_selected, demo_features, max_display=10)
         if shap_values is not None:
             print("SHAP analysis completed successfully")
+            print("Note: SHAP values now represent direct impact on COVID case counts (original scale)")
         else:
             print("SHAP analysis failed")
     except Exception as e:
         print(f"SHAP analysis failed with error: {e}")
 
-    print("\nAnalysis complete")
+    print("\nAnalysis complete - All metrics in original COVID case count scale")
 
 
 if __name__ == "__main__":
