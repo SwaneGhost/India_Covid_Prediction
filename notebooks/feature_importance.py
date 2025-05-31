@@ -65,7 +65,7 @@ def run_feature_importance(model, df, target_col='cum_positive_cases', test_size
 
         plt.figure(figsize=(10, 6))
         sns.barplot(x='coefficient', y='feature', data=coef_df.head(15))
-        plt.title("Top ElasticNet Coefficients")
+        plt.title("Top lasso Coefficients")
         plt.axvline(0, color='red', linestyle='--')
         plt.tight_layout()
         plt.show()

@@ -1,5 +1,5 @@
 """
-Module for training ElasticNet models on the COVID-19 dataset.
+Module for training lasso models on the COVID-19 dataset.
 Includes data splitting, preprocessing, feature selection, model fitting, and evaluation.
 """
 
@@ -11,7 +11,7 @@ from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder, RobustScaler
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import mean_squared_error, r2_score
-from sklearn.linear_model import ElasticNetCV
+from sklearn.linear_model import  LassoCV
 
 
 def remove_highly_correlated_features(df, target_col='cum_positive_cases',
@@ -49,14 +49,14 @@ def remove_highly_correlated_features(df, target_col='cum_positive_cases',
     return df_clean
 
 
-def train_refined_elasticnet_model(df, split_type='random', custom_target=None):
+def train_lasso_model(df, split_type='by_state', custom_target=None):
     """
-    Trains an ElasticNetCV model using a pipeline with preprocessing and feature selection.
+    Trains a lasso model using a pipeline with preprocessing and feature selection.
     Supports different data splitting methods and prints evaluation metrics.
 
     Parameters:
         df (DataFrame): Full input data with features and target.
-        split_type (str): How to split the data: 'random', 'by_state', or 'time'.
+        split_type (str): How to split the data: 'by_state'.
         custom_target (Series, optional): Use a transformed target instead of the default.
 
     Returns:
@@ -103,11 +103,10 @@ def train_refined_elasticnet_model(df, split_type='random', custom_target=None):
         ]
     )
 
-    # Build model pipeline with ElasticNetCV
+    # Build model pipeline with lasso
     model_pipeline = Pipeline([
         ('preprocessor', preprocessor),
-        ('regressor', ElasticNetCV(
-            l1_ratio=[.1, .3, .5, .7, .9, .95, .99, 1],
+        ('regressor', LassoCV(
             alphas=np.logspace(-4, 1, 50),
             max_iter=20000,
             tol=1e-4,
@@ -117,9 +116,7 @@ def train_refined_elasticnet_model(df, split_type='random', custom_target=None):
     ])
 
     # Choose how to split the data
-    if split_type == 'random':
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    elif split_type == 'by_state':
+    if split_type == 'by_state':
         states = df['state'].unique()
         np.random.seed(42)
         np.random.shuffle(states)
@@ -128,17 +125,8 @@ def train_refined_elasticnet_model(df, split_type='random', custom_target=None):
         y_train = y[df['state'].isin(train_states)]
         X_test = X[~df['state'].isin(train_states)]
         y_test = y[~df['state'].isin(train_states)]
-    elif split_type == 'time':
-        df_sorted = df.sort_values(by='date' if 'date' in df.columns else df.index)
-        split_index = int(0.8 * len(df_sorted))
-        train_idx = df_sorted.index[:split_index]
-        test_idx = df_sorted.index[split_index:]
-        X_train = X.loc[train_idx]
-        y_train = y.loc[train_idx]
-        X_test = X.loc[test_idx]
-        y_test = y.loc[test_idx]
     else:
-        raise ValueError("split_type must be one of: 'random', 'by_state', 'time'")
+        raise ValueError("split_type must be one of: 'by_state'")
 
     # Fit the pipeline on training data
     model_pipeline.fit(X_train, y_train)
@@ -150,10 +138,9 @@ def train_refined_elasticnet_model(df, split_type='random', custom_target=None):
     print(f"Test RMSE: {rmse:.2f}")
     print(f"Test R²: {r2:.4f}")
 
-    # Print best alpha and l1_ratio found during CV
+    # Print best alpha  found during CV
     if hasattr(model_pipeline.named_steps['regressor'], 'alpha_'):
         print(f"Selected alpha: {model_pipeline.named_steps['regressor'].alpha_:.6f}")
-        print(f"Selected l1_ratio: {model_pipeline.named_steps['regressor'].l1_ratio_:.2f}")
 
     # Run cross-validation to check model performance
     if split_type == 'by_state':

@@ -1,10 +1,10 @@
 """
-Main script for COVID-19 prediction using ElasticNet.
+Main script for COVID-19 prediction using lasso.
 
 This script does the following:
 - Loads and prepares enhanced data
 - Engineers features and transforms the target
-- Trains a baseline ElasticNet model
+- Trains a lasso model
 - Tunes hyperparameters using Optuna
 - Evaluates model performance
 - Analyzes feature importance with SHAP
@@ -15,6 +15,8 @@ import numpy as np
 import warnings
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 
+from Code.HyperTuning import tune_lasso_model
+from Code.model_train import train_lasso_model
 from notebooks.shap_analysis import run_shap_analysis
 
 # Suppress convergence warnings
@@ -28,8 +30,7 @@ from Code.pipeline_utils import (
     get_feature_names_from_pipeline
 )
 from Code.enhanced_data import enhanced_data
-from Code.model_train import train_refined_elasticnet_model
-from Code.HyperTuning import tune_elasticnet_model
+
 
 
 def main():
@@ -49,10 +50,10 @@ def main():
     print(f"Final dataset shape: {X_selected.shape}")
     print(f"Features: {list(X_selected.columns)}")
 
-    # Step 6: Train baseline model
-    print("\nStep 6: Training baseline ElasticNet model...")
+    # Step 6: Train lasso model
+    print("\nStep 6: Training  lasso model...")
     try:
-        model, X_train_final, X_test_final, y_train_log, y_test_log = train_refined_elasticnet_model(
+        model, X_train_final, X_test_final, y_train_log, y_test_log = train_lasso_model(
             df_selected,
             split_type='by_state',
             custom_target=y
@@ -68,7 +69,7 @@ def main():
         print(f"Test RMSE (original scale): {rmse:.2f}")
         print(f"Test R2 (original scale): {r2:.4f}")
     except Exception as e:
-        print(f"Baseline model training failed: {e}")
+        print(f"model training failed: {e}")
 
     # Step 7: Hyperparameter tuning
     print("\nStep 7: Hyperparameter tuning...")
@@ -79,7 +80,7 @@ def main():
     print(f"Categorical features: {categorical_features}")
     print(f"Number of numerical features: {len(numerical_features)}")
 
-    best_model = tune_elasticnet_model(
+    best_model = tune_lasso_model(
         X_selected, y,
         categorical_features=categorical_features,
         numerical_features=numerical_features,
@@ -95,7 +96,7 @@ def main():
         print(f"Total features in final model: {len(final_feature_names)}")
 
     # Step 9: Save trained model
-    save_model(best_model, "trained_elasticnet_model.joblib")
+    save_model(best_model, "trained_lasso_model.joblib")
 
     # Step 10: Final Model Evaluation...
     print("\nStep 10: Final Model Evaluation...")

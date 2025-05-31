@@ -1,11 +1,11 @@
 """
-Hyperparameter tuning module for ElasticNet using Optuna.
+Hyperparameter tuning module for lasso using Optuna.
 Includes a preprocessing pipeline and avoids convergence issues.
 """
 
 import numpy as np
 import optuna
-from sklearn.linear_model import ElasticNet
+from sklearn.linear_model import  Lasso
 from sklearn.model_selection import cross_val_score
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
@@ -14,9 +14,9 @@ from sklearn.preprocessing import RobustScaler, OneHotEncoder
 from sklearn.feature_selection import VarianceThreshold, SelectKBest, f_regression
 
 
-def tune_elasticnet_model(X, y, categorical_features=None, numerical_features=None, n_trials=50, cv=5):
+def tune_lasso_model(X, y, categorical_features=None, numerical_features=None, n_trials=50, cv=5):
     """
-    Uses Optuna to tune ElasticNet hyperparameters (alpha and l1_ratio),
+    Uses Optuna to tune lasso hyperparameters (alpha),
     wrapped in a full preprocessing and modeling pipeline.
 
     Parameters:
@@ -59,16 +59,13 @@ def tune_elasticnet_model(X, y, categorical_features=None, numerical_features=No
 
     # Objective function for Optuna
     def objective(trial):
-        # Suggest alpha and l1_ratio to test
+        # Suggest alpha  to test
         alpha = trial.suggest_float('alpha', 1e-3, 1.0, log=True)
-        l1_ratio = trial.suggest_float('l1_ratio', 0.1, 1.0)
 
-        # Create pipeline with current trial's parameters
         model = Pipeline([
             ('preprocessor', preprocessor),
-            ('regressor', ElasticNet(
+            ('regressor', Lasso(
                 alpha=alpha,
-                l1_ratio=l1_ratio,
                 max_iter=2000,
                 tol=1e-3,
                 random_state=42
@@ -89,14 +86,14 @@ def tune_elasticnet_model(X, y, categorical_features=None, numerical_features=No
     study.optimize(objective, n_trials=n_trials)
 
     # Show best results
-    print("Best ElasticNet Parameters:")
+    print("Best lasso Parameters:")
     print(study.best_params)
     print(f"Best cross-validated R²: {study.best_value:.4f}")
 
     # Train final pipeline using best parameters from study
     final_pipeline = Pipeline([
         ('preprocessor', preprocessor),
-        ('regressor', ElasticNet(
+        ('regressor', Lasso(
             **study.best_params,
             max_iter=2000,
             tol=1e-3,

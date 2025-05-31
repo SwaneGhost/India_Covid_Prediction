@@ -39,7 +39,8 @@ def run_shap_analysis(model, X_raw, demo_features=None, max_display=15):
         print(f"Sample size for SHAP: {X_processed.shape[0]}")
 
         # Use a sample of the data if it's too large
-        sample_size = min(1000, X_processed.shape[0])
+        sample_size = X_processed.shape[0]
+
         if X_processed.shape[0] > sample_size:
             sample_indices = np.random.choice(X_processed.shape[0], sample_size, replace=False)
             X_sample = X_processed[sample_indices]
