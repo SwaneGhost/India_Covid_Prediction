@@ -5,7 +5,9 @@ import pandas as pd
 import numpy as np
 
 import optuna
-from xgboost import XGBRegressor
+from sklearn.svm import SVR
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import GroupKFold
 
 def train_eval():
@@ -59,16 +61,23 @@ def train_eval():
         groups_train = groups.iloc[train_idx]
 
         def objective(trial):
+            kernel = trial.suggest_categorical("kernel", ["linear", "rbf", "poly", "sigmoid"])
+            
             params = {
-                "max_depth": trial.suggest_int("max_depth", 1, 51, step=2),
-                "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.5, step = 0.01),
-                "n_estimators": trial.suggest_int("n_estimators", 10, 1000),
-                "subsample": trial.suggest_float("subsample", 0.1, 1.0, step = 0.1),
-                "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0, step = 0.1),
-                "reg_alpha": trial.suggest_float("reg_alpha", 0.0, 1.0, step = 0.01),
-                "reg_lambda": trial.suggest_float("reg_lambda", 0.0, 1.0, step = 0.01),
-                "random_state": config["seed"]
+                "C": trial.suggest_float("C", 0.01, 10.0, log=True),
+                "epsilon": trial.suggest_float("epsilon", 0.05, 1.0, step = 0.05),
+                "kernel": kernel
             }
+            
+            if kernel in ["rbf", "poly", "sigmoid"]:
+                params["gamma"] = trial.suggest_categorical("gamma", ["scale", "auto", 0.01, 0.1, 0.5])
+            if kernel == "poly":
+                params["degree"] = trial.suggest_int("degree", 2, 3)
+            if kernel in ["poly", "sigmoid"]:
+                params["coef0"] = trial.suggest_float("coef0", 0.0, 1.0, step = 0.1)
+
+            model = make_pipeline(StandardScaler(), SVR(**params))
+
             # Inner CV for hyperparameter tuning
             inner_cv = GroupKFold(n_splits=3)
             scores = []
@@ -76,7 +85,6 @@ def train_eval():
                 # Inner cv split
                 X_inner_train, X_inner_val = X_train.iloc[inner_train_idx], X_train.iloc[inner_val_idx]
                 y_inner_train, y_inner_val = y_train.iloc[inner_train_idx], y_train.iloc[inner_val_idx]
-                model = XGBRegressor(**params)
                 model.fit(X_inner_train, y_inner_train)
                 y_pred = model.predict(X_inner_val)
 
@@ -89,11 +97,11 @@ def train_eval():
         study = optuna.create_study(direction="minimize", sampler=optuna.samplers.TPESampler(seed=config["seed"]))
         
         # Optimize the hyperparameters using the objective function
-        study.optimize(objective, n_trials=config["n_trials"], show_progress_bar=True)
+        study.optimize(objective, n_trials=config["n_trials"], show_progress_bar=True, timeout=3600)
         
         # Train the model with the best hyperparameters on the full training set
         best_params = study.best_params
-        model = XGBRegressor(**best_params)
+        model = make_pipeline(StandardScaler(), SVR(**best_params))
         model.fit(X_train, y_train)
         y_train_pred = model.predict(X_train)
         y_test_pred = model.predict(X_test)

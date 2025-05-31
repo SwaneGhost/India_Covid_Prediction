@@ -1,5 +1,5 @@
 data_path: Data\\Train\\train_data.csv
-last_run_folder: run_20250526_204409
+last_run_folder: run_20250530_215037
 n_trials: 500
 output_dir: Runs
 seed: 42

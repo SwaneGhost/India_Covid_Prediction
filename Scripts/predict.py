@@ -3,7 +3,9 @@ import os
 import matplotlib.pyplot as plt
 import yaml
 
-from xgboost import XGBRegressor
+from sklearn.svm import SVR
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import GroupKFold
 
 def predict():
@@ -43,7 +45,7 @@ def predict():
     groups = df["state"]
 
     # Load the model
-    model = XGBRegressor(**median_params)
+    model = make_pipeline(StandardScaler(), SVR(**median_params))
 
     # Save ground truth and predictions
     gt_and_preds = pd.DataFrame(columns=["ground_truth", "predictions"])
