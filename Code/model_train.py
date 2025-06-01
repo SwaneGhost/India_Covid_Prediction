@@ -15,7 +15,7 @@ from sklearn.linear_model import  LassoCV
 
 
 def remove_highly_correlated_features(df, target_col='cum_positive_cases',
-                                      target_corr_threshold=0.93,
+                                      target_corr_threshold=0.95,
                                       feature_corr_threshold=0.85):
     """
     Removes columns that are too correlated with the target or with each other.
