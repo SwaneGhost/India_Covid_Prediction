@@ -13,7 +13,7 @@ def predict():
     """
 
     # load config file
-    config_path = os.path.join("Config", "configs.yaml")
+    config_path = os.path.join("Config", "HGB", "configs.yaml")
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Config file not found at {config_path}")
     

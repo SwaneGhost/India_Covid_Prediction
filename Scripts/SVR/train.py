@@ -5,7 +5,9 @@ import pandas as pd
 import numpy as np
 
 import optuna
-from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.svm import SVR
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import GroupKFold
 
 def train_eval():
@@ -59,14 +61,23 @@ def train_eval():
         groups_train = groups.iloc[train_idx]
 
         def objective(trial):
+            kernel = trial.suggest_categorical("kernel", ["linear", "rbf", "poly", "sigmoid"])
+            
             params = {
-                "max_iter": trial.suggest_int("max_iter", 100, 2000, step=100),
-                "max_depth": trial.suggest_int("max_depth", 1, 51, step=2),
-                "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.5, step = 0.01),
-                "l2_regularization": trial.suggest_float("l2_regularization", 0.0, 1.0, step = 0.01),
-                "max_bins": trial.suggest_int("max_bins", 100, 255),
-                "random_state": config["seed"]
+                "C": trial.suggest_float("C", 0.01, 10.0, log=True),
+                "epsilon": trial.suggest_float("epsilon", 0.05, 1.0, step = 0.05),
+                "kernel": kernel
             }
+            
+            if kernel in ["rbf", "poly", "sigmoid"]:
+                params["gamma"] = trial.suggest_categorical("gamma", ["scale", "auto", 0.01, 0.1, 0.5])
+            if kernel == "poly":
+                params["degree"] = trial.suggest_int("degree", 2, 3)
+            if kernel in ["poly", "sigmoid"]:
+                params["coef0"] = trial.suggest_float("coef0", 0.0, 1.0, step = 0.1)
+
+            model = make_pipeline(StandardScaler(), SVR(**params))
+
             # Inner CV for hyperparameter tuning
             inner_cv = GroupKFold(n_splits=3)
             scores = []
@@ -74,7 +85,6 @@ def train_eval():
                 # Inner cv split
                 X_inner_train, X_inner_val = X_train.iloc[inner_train_idx], X_train.iloc[inner_val_idx]
                 y_inner_train, y_inner_val = y_train.iloc[inner_train_idx], y_train.iloc[inner_val_idx]
-                model = HistGradientBoostingRegressor(**params)
                 model.fit(X_inner_train, y_inner_train)
                 y_pred = model.predict(X_inner_val)
 
@@ -87,11 +97,11 @@ def train_eval():
         study = optuna.create_study(direction="minimize", sampler=optuna.samplers.TPESampler(seed=config["seed"]))
         
         # Optimize the hyperparameters using the objective function
-        study.optimize(objective, n_trials=config["n_trials"], show_progress_bar=True)
+        study.optimize(objective, n_trials=config["n_trials"], show_progress_bar=True, timeout=3600)
         
         # Train the model with the best hyperparameters on the full training set
         best_params = study.best_params
-        model = HistGradientBoostingRegressor(**best_params)
+        model = make_pipeline(StandardScaler(), SVR(**best_params))
         model.fit(X_train, y_train)
         y_train_pred = model.predict(X_train)
         y_test_pred = model.predict(X_test)
@@ -148,7 +158,7 @@ def train_eval():
         
     # Update the config file with the run folder
     config["last_run_folder"] = os.path.basename(run_folder)
-    with open(os.path.join("Config", "configs.yaml"), "w") as file:
+    with open(os.path.join("Config", "SVR", "configs.yaml"), "w") as file:
         yaml.dump(config, file)
 
     return median_params
@@ -164,7 +174,7 @@ def load_config() -> dict:
         FileNotFoundError: If the config file does not exist.
         KeyError: If any required key is missing.
     """
-    path = os.path.join("Config", "configs.yaml")
+    path = os.path.join("Config", "SVR", "configs.yaml")
     
     required_keys = ["data_path"]
 
@@ -181,7 +191,7 @@ def load_config() -> dict:
             raise KeyError(f"Missing required key: {key} in config.yaml")
         
     # Set default values for optional keys
-    config.setdefault("output_dir", "Runs/")
+    config.setdefault("output_dir", "Runs\\SVR")
     config.setdefault("seed", 42)
     config.setdefault("n_trials", 500)
 
