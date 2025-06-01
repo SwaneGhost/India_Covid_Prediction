@@ -14,152 +14,80 @@ from sklearn.metrics import mean_squared_error, r2_score
 from sklearn.linear_model import  LassoCV
 
 
-def remove_highly_correlated_features(df, target_col='cum_positive_cases',
-                                      target_corr_threshold=0.95,
-                                      feature_corr_threshold=0.85):
+from sklearn.model_selection import train_test_split, cross_val_score, GroupKFold
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import LassoCV
+from sklearn.metrics import mean_squared_error, r2_score
+from Code.pipeline_utils import build_preprocessing_pipeline
+import numpy as np
+
+
+from sklearn.model_selection import train_test_split, cross_val_score, GroupKFold
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import LassoCV
+from sklearn.metrics import mean_squared_error, r2_score
+from Code.pipeline_utils import build_preprocessing_pipeline
+import numpy as np
+
+
+from sklearn.model_selection import GroupKFold
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import LassoCV
+from Code.pipeline_utils import build_preprocessing_pipeline
+import numpy as np
+
+
+def train_lasso_model(df, target_col='cum_positive_cases'):
     """
-    Removes columns that are too correlated with the target or with each other.
-    Helps reduce data leakage and multicollinearity.
-    """
-
-    df_clean = df.copy()
-
-    # Drop identifier columns if they exist
-    drop_cols = ['dates', 'date']
-    df_features = df_clean.drop(columns=drop_cols, errors='ignore')
-
-    # Focus only on numeric columns
-    numeric_df = df_features.select_dtypes(include=[np.number])
-
-    # Remove features too strongly correlated with the target
-    corr_with_target = numeric_df.corr()[target_col].drop(target_col)
-    to_drop_target = corr_with_target[abs(corr_with_target) > target_corr_threshold].index.tolist()
-    print(f"Removing features highly correlated with the target (> {target_corr_threshold}): {to_drop_target}")
-    df_clean.drop(columns=to_drop_target, inplace=True)
-
-    # Remove features too strongly correlated with other features
-    numeric_df = df_clean.select_dtypes(include=[np.number])
-    corr_matrix = numeric_df.drop(columns=[target_col], errors='ignore').corr().abs()
-    upper_tri = corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
-    to_drop_features = [col for col in upper_tri.columns if any(upper_tri[col] > feature_corr_threshold)]
-    print(f"Removing features highly correlated with each other (> {feature_corr_threshold}): {to_drop_features}")
-    df_clean.drop(columns=to_drop_features, inplace=True)
-
-    print(f"Final shape after removing correlated features: {df_clean.shape}")
-    return df_clean
-
-
-def train_lasso_model(df, split_type='by_state', custom_target=None):
-    """
-    Trains a lasso model using a pipeline with preprocessing and feature selection.
-    Supports different data splitting methods and prints evaluation metrics.
+    Trains a LassoCV model using a pipeline and state-based train/test split.
 
     Parameters:
-        df (DataFrame): Full input data with features and target.
-        split_type (str): How to split the data: 'by_state'.
-        custom_target (Series, optional): Use a transformed target instead of the default.
+        df (DataFrame): Full input DataFrame (features + target + state)
+        target_col (str): Name of the target column
 
     Returns:
-        model_pipeline (Pipeline): Trained pipeline.
-        X_train, X_test (DataFrame): Training and testing features.
-        y_train, y_test (Series): Training and testing targets.
+        model_pipeline (Pipeline): Trained model
+        X_train, X_test, y_train, y_test: Train/test splits for future evaluation
     """
-    print(f"Splitting method: {split_type}")
+    # Split target and features
+    X = df.drop(columns=[target_col])
+    y = df[target_col]
 
-    target = 'cum_positive_cases'
-    id_cols = ['dates', 'date']
-    existing_id_cols = [col for col in id_cols if col in df.columns]
-    X = df.drop(columns=[target] + existing_id_cols)
-    y = custom_target if custom_target is not None else df[target]
-
-    # Identify categorical and numerical features
+    # Identify features
     categorical_features = ['state'] if 'state' in X.columns else []
     numerical_features = X.select_dtypes(include=['float64', 'int64']) \
                           .columns.difference(categorical_features).tolist()
 
-    # Remove low-variance numerical features
-    vt = VarianceThreshold(threshold=1e-4)
-    X_num_filtered = vt.fit_transform(X[numerical_features])
-    retained_numerical = np.array(numerical_features)[vt.get_support()].tolist()
+    # Train/test split by state
+    states = df['state'].unique()
+    np.random.seed(42)
+    np.random.shuffle(states)
+    train_states = states[:int(0.8 * len(states))]
+    test_states = states[int(0.8 * len(states)):]
 
-    # Select top numerical features using f_regression
-    selector = SelectKBest(score_func=f_regression, k=min(20, len(retained_numerical)))
-    X_kbest_filtered = selector.fit_transform(X[retained_numerical], y)
-    selected_numerical = np.array(retained_numerical)[selector.get_support()].tolist()
+    X_train = X[X['state'].isin(train_states)]
+    y_train = y[X['state'].isin(train_states)]
+    X_test = X[X['state'].isin(test_states)]
+    y_test = y[X['state'].isin(test_states)]
 
-    # Build preprocessing pipeline
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('num', Pipeline([
-                ('imputer', SimpleImputer(strategy='median')),
-                ('scaler', RobustScaler())
-            ]), selected_numerical),
-            ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), categorical_features)
-        ] if categorical_features else [
-            ('num', Pipeline([
-                ('imputer', SimpleImputer(strategy='median')),
-                ('scaler', RobustScaler())
-            ]), selected_numerical)
-        ]
-    )
-
-    # Build model pipeline with lasso
+    # Build pipeline
+    preprocessor = build_preprocessing_pipeline(numerical_features, categorical_features)
     model_pipeline = Pipeline([
         ('preprocessor', preprocessor),
         ('regressor', LassoCV(
             alphas=np.logspace(-4, 1, 50),
-            max_iter=20000,
+            max_iter=10000,
             tol=1e-4,
-            cv=10,
+            cv=5,
             random_state=42
         ))
     ])
 
-    # Choose how to split the data
-    if split_type == 'by_state':
-        states = df['state'].unique()
-        np.random.seed(42)
-        np.random.shuffle(states)
-        train_states = states[:int(0.8 * len(states))]
-        X_train = X[df['state'].isin(train_states)]
-        y_train = y[df['state'].isin(train_states)]
-        X_test = X[~df['state'].isin(train_states)]
-        y_test = y[~df['state'].isin(train_states)]
-    else:
-        raise ValueError("split_type must be one of: 'by_state'")
-
-    # Fit the pipeline on training data
+    # Train
     model_pipeline.fit(X_train, y_train)
-    y_pred = model_pipeline.predict(X_test)
 
-    # Evaluate model on test set
-    rmse = mean_squared_error(y_test, y_pred, squared=False)
-    r2 = r2_score(y_test, y_pred)
-    print(f"Test RMSE: {rmse:.2f}")
-    print(f"Test R²: {r2:.4f}")
+    # Return everything for later evaluation
+    return model_pipeline, X_train.copy(), X_test.copy(), y_train.copy(), y_test.copy()
 
-    # Print best alpha  found during CV
-    if hasattr(model_pipeline.named_steps['regressor'], 'alpha_'):
-        print(f"Selected alpha: {model_pipeline.named_steps['regressor'].alpha_:.6f}")
 
-    # Run cross-validation to check model performance
-    if split_type == 'by_state':
-        cv = GroupKFold(n_splits=5)
-        groups = X['state']
-    elif split_type == 'time':
-        cv = TimeSeriesSplit(n_splits=5)
-        groups = None
-    else:
-        cv = 10
-        groups = None
 
-    scores = cross_val_score(model_pipeline, X, y, cv=cv, scoring='r2', groups=groups)
-    print(f"Cross-validated R²: mean = {scores.mean():.4f}, std = {scores.std():.4f}")
-
-    # Compare train vs test R²
-    train_score = model_pipeline.score(X_train, y_train)
-    overfitting_gap = train_score - r2
-    print(f"Train R²: {train_score:.4f}")
-    print(f"Overfitting gap: {overfitting_gap:.4f}")
-
-    return model_pipeline, X_train.copy(), X_test.copy(), y_train, y_test

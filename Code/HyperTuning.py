@@ -13,6 +13,8 @@ from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import RobustScaler, OneHotEncoder
 from sklearn.feature_selection import VarianceThreshold, SelectKBest, f_regression
 
+from Code.pipeline_utils import build_preprocessing_pipeline
+
 
 def tune_lasso_model(X, y, categorical_features=None, numerical_features=None, n_trials=50, cv=5):
     """
@@ -39,23 +41,8 @@ def tune_lasso_model(X, y, categorical_features=None, numerical_features=None, n
                               .columns.difference(categorical_features).tolist()
 
     # Preprocessing for numeric features: impute, scale, remove low variance, select all features
-    numerical_transformer = Pipeline([
-        ('imputer', SimpleImputer(strategy='median')),
-        ('scaler', RobustScaler()),
-        ('variance_threshold', VarianceThreshold(threshold=0.01)),
-        ('select_k_best', SelectKBest(score_func=f_regression, k='all'))
-    ])
 
-    # Combine numerical and categorical preprocessing
-    if categorical_features:
-        preprocessor = ColumnTransformer(transformers=[
-            ('num', numerical_transformer, numerical_features),
-            ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), categorical_features)
-        ])
-    else:
-        preprocessor = ColumnTransformer(transformers=[
-            ('num', numerical_transformer, numerical_features)
-        ])
+    preprocessor = build_preprocessing_pipeline(numerical_features, categorical_features, use_feature_selection=True)
 
     # Objective function for Optuna
     def objective(trial):

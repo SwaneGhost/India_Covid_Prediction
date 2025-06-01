@@ -29,24 +29,18 @@ from Code.pipeline_utils import (
     prepare_training_data,
     print_selected_features,
     save_model,
-    get_feature_names_from_pipeline
+    get_feature_names_from_pipeline, evaluate_model
 )
 from Code.enhanced_data import enhanced_data
 
 
 def main():
     # Step 1: Load and prepare dataset
-    print("Step 1: Loading and preparing data...")
-    df = enhanced_data()
-
-    # Step 2: Optional EDA (commented out)
-    # from notebooks.EDA import eda
-    # eda(df)
-
-    # Step 3–5: Feature engineering (NO log transformation)
+    df = pd.read_csv('../Data/Processed/update.csv')
+    # Step 3–5: Feature engineering
     print("\nStep 3–5: Preparing training features...")
     X_selected, y_raw, df_selected = prepare_training_data(df, target_col='cum_positive_cases', k='all')
-    y = y_raw  # Use original scale directly - NO log transformation
+    y = y_raw
 
     print(f"Final dataset shape: {X_selected.shape}")
     print(f"Target variable range: {y.min():.0f} to {y.max():.0f}")
@@ -55,22 +49,10 @@ def main():
     # Step 6: Train lasso model
     print("\nStep 6: Training lasso model...")
     try:
-        model, X_train_final, X_test_final, y_train, y_test = train_lasso_model(
-            df_selected,
-            split_type='by_state',
-            custom_target=y  # Pass original scale target
-        )
+        model, X_train_final, X_test_final, y_train, y_test = train_lasso_model(df_selected)
 
-        print("\nEvaluating predictions on original scale...")
-        y_pred = model.predict(X_test_final)  # Direct predictions in original scale
-
-        rmse = mean_squared_error(y_test, y_pred, squared=False)
-        r2 = r2_score(y_test, y_pred)
-        mae = mean_absolute_error(y_test, y_pred)
-
-        print(f"Test RMSE: {rmse:,.2f}")
-        print(f"Test R²: {r2:.4f}")
-        print(f"Test MAE: {mae:,.2f}")
+        print("\nEvaluating predictions ...")
+        evaluate_model(model, X_train_final, y_train, X_test_final, y_test, name="Baseline Lasso")
 
     except Exception as e:
         print(f"Model training failed: {e}")
@@ -85,7 +67,7 @@ def main():
     print(f"Number of numerical features: {len(numerical_features)}")
 
     best_model = tune_lasso_model(
-        X_selected, y,  # Use original scale target
+        X_selected, y,
         categorical_features=categorical_features,
         numerical_features=numerical_features,
         n_trials=30
@@ -104,45 +86,11 @@ def main():
 
     # Step 10: Final Model Evaluation
     print("\nStep 10: Final Model Evaluation...")
-    try:
-        from sklearn.model_selection import train_test_split
-        X_train, X_test, y_train, y_test = train_test_split(X_selected, y, test_size=0.2, random_state=42)
+    from sklearn.model_selection import train_test_split
+    X_train, X_test, y_train, y_test = train_test_split(X_selected, y, test_size=0.2, random_state=42)
 
-        best_model.fit(X_train, y_train)
-        y_pred = best_model.predict(X_test)  # Direct predictions in original scale
-
-        # Calculate metrics in original scale
-        r2_score_final = r2_score(y_test, y_pred)
-        rmse_final = mean_squared_error(y_test, y_pred, squared=False)
-        mae_final = mean_absolute_error(y_test, y_pred)
-
-        # Calculate training metrics to check overfitting
-        y_train_pred = best_model.predict(X_train)
-        r2_train = r2_score(y_train, y_train_pred)
-        rmse_train = mean_squared_error(y_train, y_train_pred, squared=False)
-
-        print("\nFinal Model Performance Summary:")
-        print("=" * 50)
-        print("Training Metrics:")
-        print(f"  R²: {r2_train:.4f}")
-        print(f"  RMSE: {rmse_train:,.2f}")
-
-        print("\nTest Metrics:")
-        print(f"  R²: {r2_score_final:.4f}")
-        print(f"  RMSE: {rmse_final:,.2f}")
-        print(f"  MAE: {mae_final:,.2f}")
-
-        print(f"\nOverfitting Check:")
-        print(f"  R² difference (train - test): {r2_train - r2_score_final:.4f}")
-
-        print(f"\nPrediction Range:")
-        print(f"  Min prediction: {y_pred.min():,.0f}")
-        print(f"  Max prediction: {y_pred.max():,.0f}")
-        print(f"  Actual range: {y_test.min():,.0f} to {y_test.max():,.0f}")
-        print("=" * 50)
-
-    except Exception as e:
-        print(f"Model evaluation failed: {e}")
+    best_model.fit(X_train, y_train)
+    evaluate_model(best_model, X_train, y_train, X_test, y_test, name="Tuned Lasso")
 
     # Step 11: SHAP analysis for interpretability
     print("\nStep 11: SHAP Analysis...")

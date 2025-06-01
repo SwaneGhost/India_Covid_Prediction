@@ -1,33 +1,5 @@
 import numpy as np
 
-
-def remove_data_leakage_features(df, target_col='cum_positive_cases'):
-    """
-    Removes columns that leak information about the target.
-
-    These are features that are directly calculated from the target,
-    or that wouldn't be available in real-time (e.g. cumulative results).
-    """
-
-    df_clean = df.copy()
-
-    # Known leakage columns (only drop them if they exist)
-    leakage_features = [
-        'cum_recovered',
-        'cum_deceased',
-        'cum_tests',
-        'cases_to_tests_ratio',
-        'deaths_to_cases_ratio',
-        'recovery_rate',
-    ]
-
-    existing_leakage = [col for col in leakage_features if col in df_clean.columns]
-    df_clean.drop(columns=existing_leakage, inplace=True)
-
-    print("Removed data leakage features:", existing_leakage)
-    return df_clean
-
-
 def remove_highly_correlated_features(df, target_col='cum_positive_cases',
                                       target_corr_threshold=0.85,
                                       feature_corr_threshold=0.8):
@@ -42,7 +14,7 @@ def remove_highly_correlated_features(df, target_col='cum_positive_cases',
     df_clean = df.copy()
 
     # Drop non-feature columns if present
-    drop_cols = ['dates', 'date']
+    drop_cols = ['dates', 'date','cum_tests']
     df_features = df_clean.drop(columns=[col for col in drop_cols if col in df_clean.columns], errors='ignore')
 
     # Keep only numeric features
@@ -74,7 +46,7 @@ def remove_highly_correlated_features(df, target_col='cum_positive_cases',
     return df_clean
 
 
-def improved_feature_engineering(df):
+def feature_engineering(df):
     """
     Adds useful engineered features that help model performance.
 
@@ -107,8 +79,6 @@ def improved_feature_engineering(df):
     if 'density' in df_fe.columns and 'Female to Male ratio' in df_fe.columns:
         df_fe['elderly_density'] = df_fe['density'] * df_fe['Female to Male ratio']
 
-    # Final cleanup
-    df_fe = remove_data_leakage_features(df_fe)
 
     print("Feature engineering completed.")
     return df_fe
