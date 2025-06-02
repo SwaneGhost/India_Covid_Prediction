@@ -53,6 +53,8 @@ Reccomended to use Anaconda.
 
 ```
 git clone https://github.com/SwaneGhost/India_Covid_Prediction.git
+```
+```
 cd India_Covid_Prediction
 ```
 
@@ -61,6 +63,8 @@ cd India_Covid_Prediction
 Using Conda:  
 ```
 conda env create -f environment.yaml
+```
+```
 conda activate india_covid_pred
 ```
 or with pip:
@@ -101,7 +105,7 @@ The model may be better to apply for a pandemic, the XGB did show us some influe
 
 ## Contact
 
-Denis - [Email me](mailto:denisst@post.bgu.ac.il)
+Denis - denisst@post.bgu.ac.il  
 TODO add more mails
 
 ## License
