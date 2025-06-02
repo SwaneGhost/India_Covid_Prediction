@@ -12,7 +12,7 @@ if __name__ == "__main__":
     merged_data = merge_data()
     cleaned_data = clean_data(merged_data)
     
-    model = "HGB"  # Specify the model to use
+    model = "Lasso"  # Specify the model to use
     
     if model == "HGB":
         train_eval_hgb() # this will take about 1 hour to run for 500 trials
@@ -26,5 +26,5 @@ if __name__ == "__main__":
     elif model == "Lasso":
         train_eval_lasso()
     else:
-        raise ValueError(f"Model {model} is not supported. Choose from 'HGB', 'XGB', or 'SVR'.")
+        raise ValueError(f"Model {model} is not supported. Choose from 'HGB', 'XGB','SVR' or 'Lasso")
         

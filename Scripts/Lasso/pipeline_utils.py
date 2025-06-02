@@ -8,7 +8,7 @@ from .feature_engineering import feature_engineering, remove_highly_correlated_f
 from .feature_selection import select_top_k_features
 
 
-def split_features_target(df, target_col='cum_positive_cases', drop_cols=['state', 'date', 'dates']):
+def split_features_target(df, config, drop_cols=['state', 'date', 'dates']):
     """
     Splits the dataset into features (X) and target (y), dropping metadata columns if needed.
 
@@ -21,12 +21,12 @@ def split_features_target(df, target_col='cum_positive_cases', drop_cols=['state
         X (DataFrame): Features only
         y (Series): Target variable
     """
-    y = df[target_col]
-    X = df.drop(columns=[target_col] + [col for col in drop_cols if col in df.columns], errors='ignore')
+    y = df[config["target_col"]]
+    X = df.drop(columns=[config["target_col"]] + [col for col in drop_cols if col in df.columns], errors='ignore')
     return X, y
 
 
-def prepare_training_data(df, target_col='cum_positive_cases', k='all'):
+def prepare_training_data(df,config):
     """
     Prepares the data for model training.
 
@@ -51,21 +51,19 @@ def prepare_training_data(df, target_col='cum_positive_cases', k='all'):
     df = feature_engineering(df)
 
     # Step 2: Remove correlated columns
-    df = remove_highly_correlated_features(df, target_col=target_col)
+    df = remove_highly_correlated_features(df, config["target_col"],config["target_corr_threshold"],config["feature_corr_threshold"])
 
     # Step 3: Separate input features and target
-    X = df.drop(columns=[target_col])
-    y = df[target_col]
+    X = df.drop(columns=[config["target_col"]])
+    y = df[config["target_col"]]
 
     # Step 4: Select top k features
-    X_selected, selected_features = select_top_k_features(X, y, k=k)
+    X_selected, selected_features = select_top_k_features(X, y, config)
 
     # Step 5: Add back non-numeric (categorical) feature and identifiers
     X_selected['state'] = df['state']
     df_selected = X_selected.copy()
-    df_selected[target_col] = y
-    # df_selected['date'] = df['date']
-    # df_selected['dates'] = df['dates']
+    df_selected[config["target_col"]] = y
 
     return X_selected, y, df_selected
 

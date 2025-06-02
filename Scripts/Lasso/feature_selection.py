@@ -7,7 +7,7 @@ import pandas as pd
 import numpy as np
 
 
-def select_top_k_features(X, y, k='all', return_scores=False):
+def select_top_k_features(X, y, config):
     """
     Selects the top k numerical features based on their relationship with the target.
 
@@ -39,11 +39,10 @@ def select_top_k_features(X, y, k='all', return_scores=False):
 
     # Prepare numerical feature set
     X_numerical = X[numerical_features]
-    k = min(k, len(numerical_features)) if k != 'all' else len(numerical_features)
-    print(f"Selecting top {k} features")
+    config["k"] = min(config["k"], len(numerical_features)) if config["k"] != 'all' else len(numerical_features)
 
     # Apply SelectKBest with f_regression
-    selector = SelectKBest(score_func=f_regression, k=k)
+    selector = SelectKBest(score_func=f_regression, k=config["k"])
     selector.fit(X_numerical, y)
 
     # Get selected features
@@ -53,18 +52,6 @@ def select_top_k_features(X, y, k='all', return_scores=False):
     # Combine selected numerical features with all categorical ones
     all_selected_features = selected_numerical_features.tolist() + categorical_features
     selected_X = X[all_selected_features]
-
-    if return_scores:
-        scores = selector.scores_
-        pvalues = selector.pvalues_
-        scores_df = pd.DataFrame({
-            'feature': X_numerical.columns,
-            'f_score': scores,
-            'p_value': pvalues
-        }).sort_values(by='f_score', ascending=False)
-
-        print(f"Selected {len(selected_numerical_features)} numerical and {len(categorical_features)} categorical features")
-        return selected_X, all_selected_features, scores_df
 
     print(f"Selected {len(selected_numerical_features)} numerical and {len(categorical_features)} categorical features")
     return selected_X, all_selected_features

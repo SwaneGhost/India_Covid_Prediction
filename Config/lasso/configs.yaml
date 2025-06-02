@@ -1,0 +1,14 @@
+data_path: Data\\Train\\train_data.csv
+seed: 42
+test_size: 0.2
+train_size: 0.8
+target_col: cum_positive_cases
+lasso_alpha_range: [0.001, 1.0]
+lasso_l1_ratio_range: [0.1, 1.0]
+n_trials: 30
+target_corr_threshold: 0.85
+feature_corr_threshold: 0.8
+k: 'all'
+score_func: f_regression
+cv: 5
+max_iter: 10000

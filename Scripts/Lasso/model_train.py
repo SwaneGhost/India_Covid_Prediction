@@ -9,7 +9,7 @@ from .pipeline_utils import build_preprocessing_pipeline
 import numpy as np
 
 
-def train_lasso_model(df, target_col='cum_positive_cases'):
+def train_lasso_model(df, config):
     """
     Trains a LassoCV model using a pipeline and state-based train/test split.
 
@@ -22,8 +22,8 @@ def train_lasso_model(df, target_col='cum_positive_cases'):
         X_train, X_test, y_train, y_test: Train/test splits for future evaluation
     """
     # Split target and features
-    X = df.drop(columns=[target_col])
-    y = df[target_col]
+    X = df.drop(columns=[config["target_col"]])
+    y = df[config["target_col"]]
 
     # Identify features
     categorical_features = ['state'] if 'state' in X.columns else []
@@ -32,10 +32,10 @@ def train_lasso_model(df, target_col='cum_positive_cases'):
 
     # Train/test split by state
     states = df['state'].unique()
-    np.random.seed(42)
+    np.random.seed(config["seed"])
     np.random.shuffle(states)
-    train_states = states[:int(0.8 * len(states))]
-    test_states = states[int(0.8 * len(states)):]
+    train_states = states[:int(config["train_size"] * len(states))]
+    test_states = states[int(config["train_size"]* len(states)):]
 
     X_train = X[X['state'].isin(train_states)]
     y_train = y[X['state'].isin(train_states)]
@@ -48,10 +48,10 @@ def train_lasso_model(df, target_col='cum_positive_cases'):
         ('preprocessor', preprocessor),
         ('regressor', LassoCV(
             alphas=np.logspace(-4, 1, 50),
-            max_iter=10000,
+            max_iter=config["max_iter"],
             tol=1e-4,
-            cv=5,
-            random_state=42
+            cv=config["cv"],
+            random_state=config["seed"]
         ))
     ])
 

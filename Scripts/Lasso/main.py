@@ -1,24 +1,10 @@
-"""
-Main script for COVID-19 prediction using lasso.
-
-This script does the following:
-- Loads and prepares enhanced data
-- Engineers features (NO log transformation on target)
-- Trains a lasso model
-- Tunes hyperparameters using Optuna
-- Evaluates model performance
-- Analyzes feature importance with SHAP
-
-Updated to work directly with original target scale.
-"""
-
 import pandas as pd
 import warnings
 import os
 
 from .HyperTuning import tune_lasso_model
 from .model_train import train_lasso_model
-
+import yaml
 
 # Suppress convergence warnings
 warnings.filterwarnings('ignore', category=UserWarning)
@@ -32,20 +18,19 @@ from .pipeline_utils import (
 )
 
 def main():
+    # Load configuration
+    with open("/Config/lasso/configs.yaml", "r") as f:
+        config = yaml.safe_load(f)
 
-    # Step 1: Load and prepare dataset
+    # Step 1: Load dataset
     df = pd.read_csv('Data/Train/train_data.csv')
-    # Step 3–5: Feature engineering
-    print("\nStep 3–5: Preparing training features...")
-    X_selected, y_raw, df_selected = prepare_training_data(df, target_col='cum_positive_cases', k='all')
+    # Step 2: Feature engineering and selection
+    print("\nStep 2: Feature engineering and selection")
+    X_selected, y_raw, df_selected = prepare_training_data(df, config)
     y = y_raw
 
-    print(f"Final dataset shape: {X_selected.shape}")
-    print(f"Target variable range: {y.min():.0f} to {y.max():.0f}")
-    print(f"Features: {list(X_selected.columns)}")
-
-    # Step 6: Train lasso model
-    print("\nStep 6: Training lasso model...")
+    # Step 3: Train lasso model
+    print("\nStep 3: Training lasso model")
     try:
         model, X_train_final, X_test_final, y_train, y_test = train_lasso_model(df_selected)
 
@@ -55,8 +40,8 @@ def main():
     except Exception as e:
         print(f"Model training failed: {e}")
 
-    # Step 7: Hyperparameter tuning
-    print("\nStep 7: Hyperparameter tuning...")
+    # Step 4: Hyperparameter tuning
+    print("\nStep 4: Hyperparameter tuning")
     categorical_features = ['state']
     numerical_features = X_selected.select_dtypes(include=['float64', 'int64']) \
                                     .columns.difference(categorical_features).tolist()
@@ -68,11 +53,11 @@ def main():
         X_selected, y,
         categorical_features=categorical_features,
         numerical_features=numerical_features,
-        n_trials=30
+        n_trials=config["n_trails"]
     )
 
-    # Step 8: Feature analysis
-    print("\nStep 8: Selected Features Analysis:")
+    # Step 5: Feature analysis
+    print("\nStep 5: Selected Features Analysis:")
     print_selected_features(best_model, numerical_features)
 
     final_feature_names = get_feature_names_from_pipeline(best_model)
@@ -81,13 +66,13 @@ def main():
 
     timestamp = pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')
 
-    # Step 9: Save trained model
+    # Step 6: Save trained model
     save_model(best_model, f"Models/trained_lasso_model{timestamp}.joblib")
 
-    # Step 10: Final Model Evaluation
-    print("\nStep 10: Final Model Evaluation...")
+    # Step 7: Final Model Evaluation
+    print("\nStep 7: Final Model Evaluation")
     from sklearn.model_selection import train_test_split
-    X_train, X_test, y_train, y_test = train_test_split(X_selected, y, test_size=0.2, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X_selected, y, test_size=config["test_size"], random_state=config["seed"])
 
     best_model.fit(X_train, y_train)
     evaluate_model(best_model, X_train, y_train, X_test, y_test, name="Tuned Lasso")

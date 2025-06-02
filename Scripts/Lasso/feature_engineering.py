@@ -1,8 +1,6 @@
 import numpy as np
 
-def remove_highly_correlated_features(df, target_col='cum_positive_cases',
-                                      target_corr_threshold=0.85,
-                                      feature_corr_threshold=0.8):
+def remove_highly_correlated_features(df, target_col,target_corr_threshold,feature_corr_threshold):
     """
     Removes features that are:
     - Too correlated with the target (can leak future info),
