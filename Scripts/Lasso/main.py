@@ -19,7 +19,7 @@ from .pipeline_utils import (
 
 def main():
     # Load configuration
-    with open("/Config/lasso/configs.yaml", "r") as f:
+    with open("Config/lasso/configs.yaml", "r") as f:
         config = yaml.safe_load(f)
 
     # Step 1: Load dataset
@@ -32,7 +32,7 @@ def main():
     # Step 3: Train lasso model
     print("\nStep 3: Training lasso model")
     try:
-        model, X_train_final, X_test_final, y_train, y_test = train_lasso_model(df_selected)
+        model, X_train_final, X_test_final, y_train, y_test = train_lasso_model(df = df_selected, config = config)
 
         print("\nEvaluating predictions ...")
         evaluate_model(model, X_train_final, y_train, X_test_final, y_test, name="Baseline Lasso")
@@ -50,10 +50,11 @@ def main():
     print(f"Number of numerical features: {len(numerical_features)}")
 
     best_model = tune_lasso_model(
-        X_selected, y,
-        categorical_features=categorical_features,
-        numerical_features=numerical_features,
-        n_trials=config["n_trails"]
+        X = X_selected, 
+        y = y,
+        config = config, 
+        categorical_features = categorical_features,
+        numerical_features = numerical_features
     )
 
     # Step 5: Feature analysis

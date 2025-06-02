@@ -6,10 +6,11 @@ Includes data splitting, preprocessing, feature selection, model fitting, and ev
 from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LassoCV
 from .pipeline_utils import build_preprocessing_pipeline
+import pandas as pd
 import numpy as np
 
 
-def train_lasso_model(df, config):
+def train_lasso_model(df: pd.DataFrame, config: dict):
     """
     Trains a LassoCV model using a pipeline and state-based train/test split.
 
