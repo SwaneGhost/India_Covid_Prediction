@@ -1,4 +1,4 @@
-name: India
+name: IndiaCovidPrediction
 channels:
   - conda-forge
   - defaults
