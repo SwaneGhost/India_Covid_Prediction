@@ -47,6 +47,8 @@ Dataset that contains the amout of sick, dead and cured people every day from th
 
 Requires **Python 3.11**.  
 Reccomended to use Anaconda.
+This Repository was built on a windows and VSCode framework.  
+Different frameworks may not work properly with path definitions.
 
 
 ### Clone the repository
@@ -76,7 +78,12 @@ pip install -r requirements.txt
 
 In the folder ```Data/Train``` there is a ```train_data.csv``` file.  
 In order to retrain and predict using any of the models, replace the file with your own csv file.  
-TODO keep explaining
+> Note: The models require a target column and they drop the dates (can be removed from the code), and states column is used for grouping
+
+To select the model used go to ```Scripts/main.py``` and choose the model.  
+After each run of XGB, HGB and SVR the results reflect on the notebooks.
+
+
 
 ## Evaluation
 
