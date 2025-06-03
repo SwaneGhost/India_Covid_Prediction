@@ -113,9 +113,9 @@ The model may be better to apply for a pandemic, the XGB did show us some influe
 ## Contact
 
 Denis - denisst@post.bgu.ac.il  
-Noa - noapatch@post.bgu.ac.il
-Yaki - yakin@post.bgu.ac.il
-Dan - danzas@post.bgu.ac.il
+Noa - noapatch@post.bgu.ac.il  
+Yaki - yakin@post.bgu.ac.il  
+Dan - danzas@post.bgu.ac.il  
 TODO add more mails
 
 ## License
