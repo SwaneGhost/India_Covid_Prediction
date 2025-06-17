@@ -69,10 +69,6 @@ conda env create -f environment.yaml
 ```
 conda activate india_covid_pred
 ```
-or with pip:
-```
-pip install -r requirements.txt
-```
 
 ## Usage
 
